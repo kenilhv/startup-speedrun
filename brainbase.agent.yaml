@@ -1,0 +1,46 @@
+# brainbase.agent.yaml — declarative agent manifest.
+# Committed to source control. Edit by hand, then `brainbase agent push`.
+
+schema: 1
+id: d082274f-c871-46d8-ac7e-c854dd1a6cb2
+harness: claude-code
+agent:
+  name: Paycrew
+  tagline: Reads vendor invoice PDFs and returns vendor, amount, due date and bank
+    last 4 as JSON.
+instructions:
+  file: ./agent/instructions.md
+playbooks:
+  - id: 494c8d73-2f7f-4ebe-9bcc-1ffe7abbbe77
+    title: Extract one invoice
+    description: Turn one invoice PDF into the PayCrew invoice JSON
+    content:
+      file: ./agent/playbook-extract.md
+skills: []
+mcp: []
+evals:
+  - id: c3c5e92a-bc2d-4f40-b1a1-5ad5e1871541
+    slug: json-only-contract
+    criteria: The reply is a single JSON object with exactly the keys vendor_name,
+      invoice_number, amount_cents, currency, due_date, bank_last4,
+      po_reference, confidence, and no other text.
+    enabled: true
+    judge_model: claude-sonnet-4-6
+    judge_type: model
+    output_shape: binary
+  - id: 5e3653ae-5e50-4f73-b5e3-5cb23334deb4
+    slug: bank-last4-only
+    criteria: bank_last4 is null or exactly 4 digits; no full bank account number
+      appears anywhere in the reply.
+    enabled: true
+    judge_model: claude-sonnet-4-6
+    judge_type: model
+    output_shape: binary
+  - id: 5b37179a-8d0d-450d-9a9c-9670cb7f3a9d
+    slug: no-guessing
+    criteria: Fields not present on the invoice are null rather than invented, and
+      amount_cents is the total due in integer cents.
+    enabled: true
+    judge_model: claude-sonnet-4-6
+    judge_type: model
+    output_shape: binary

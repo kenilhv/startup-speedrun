@@ -14,3 +14,7 @@ backend/uploads/
 .coverage
 htmlcov/
 *.log
+
+# frontend
+node_modules/
+dist/
