@@ -99,7 +99,17 @@ def _usd(cents):
     return f"${cents / 100:,.2f}"
 
 
-def task_message(*, key, vendor, invoice_number, amount_cents, url, approved_by):
+def demo_charge_cents():
+    """Optional fixed real charge (e.g. 100 = $1.00) standing in for the invoice total during demos."""
+    raw = os.getenv("BRAINBASE_DEMO_CHARGE_CENTS", "").strip()
+    if not raw:
+        return None
+    if not raw.isdigit() or int(raw) <= 0:
+        raise PayerNotConfigured("Brainbase + Link payments need BRAINBASE_DEMO_CHARGE_CENTS as a positive whole number of cents, or unset.")
+    return int(raw)
+
+
+def task_message(*, key, vendor, invoice_number, amount_cents, url, approved_by, invoice_cents=None):
     approval = (f"Approved by {approved_by} after the vendor confirmed a bank change by phone."
                 if approved_by else "Automatic: low risk, bank details match the vendor file.")
     example = json.dumps({"paycrew_payment_ref": key, "status": "paid", "amount_cents": amount_cents,
@@ -111,7 +121,10 @@ Pay exactly one vendor invoice using agent checkout with the connected Link wall
 - Payment reference: {key}
 - Vendor: {vendor}
 - Invoice: {invoice_number}
-- Amount: {_usd(amount_cents)} USD ({amount_cents} cents). Pay this exact total and nothing else.
+- Amount: {_usd(amount_cents)} USD ({amount_cents} cents). Pay this exact total and nothing else.{
+    f"""
+  (Demo charge standing in for the invoice total of {_usd(invoice_cents)}. The checkout page is priced at {_usd(amount_cents)}.)"""
+    if invoice_cents and invoice_cents != amount_cents else ""}
 - Checkout page (the ONLY place you may pay): {url}
 - {approval}
 
@@ -156,8 +169,9 @@ def _reserve(invoice_id, approved_by, agent_id, cap):
         amount = invoice["amount_cents"]
         if type(amount) is not int or amount <= 0:
             raise PayerRejected("Invoice amount must be a positive whole number of cents")
-        if amount > cap:
-            raise PayerRejected(f"{_usd(amount)} is over the Brainbase payment limit of {_usd(cap)}; needs a human")
+        charge = demo_charge_cents() or amount  # what actually leaves the wallet
+        if charge > cap:
+            raise PayerRejected(f"{_usd(charge)} is over the Brainbase payment limit of {_usd(cap)}; needs a human")
         if invoice["currency"] != "usd":
             raise PayerRejected("Only USD invoices are supported")
         if not invoice["invoice_number"]:
@@ -177,17 +191,18 @@ def _reserve(invoice_id, approved_by, agent_id, cap):
             "agent_id": agent_id,
             "title": f"Pay {invoice['invoice_number']} · {vendor['name']} · {_usd(amount)}",
             "message": task_message(key=key, vendor=vendor["name"], invoice_number=invoice["invoice_number"],
-                                    amount_cents=amount, url=url, approved_by=approved_by),
-            "merchant_url": url, "amount_cents": amount, "currency": "usd",
+                                    amount_cents=charge, url=url, approved_by=approved_by, invoice_cents=amount),
+            "merchant_url": url, "amount_cents": amount, "charge_cents": charge, "currency": "usd",
         }
-        c.execute("""INSERT INTO payments(invoice_id,amount_cents,status,provider,idempotency_key,request_json,
+        c.execute("""INSERT INTO payments(invoice_id,amount_cents,charged_cents,status,provider,idempotency_key,request_json,
                 started_at,lease_until,approved_by)
-            VALUES (?,?,'pending','brainbase',?,?,?,?,?) ON CONFLICT(invoice_id) DO UPDATE SET
+            VALUES (?,?,?,'pending','brainbase',?,?,?,?,?) ON CONFLICT(invoice_id) DO UPDATE SET
+            charged_cents=excluded.charged_cents,
             status='pending',provider='brainbase',provider_ref=NULL,result_json=NULL,stripe_transfer_id=NULL,
             amount_cents=excluded.amount_cents,idempotency_key=excluded.idempotency_key,
             request_json=excluded.request_json,started_at=excluded.started_at,lease_until=excluded.lease_until,
             error_code=NULL,approved_by=excluded.approved_by""",
-            (invoice_id, amount, key, json.dumps(request), now, now + LEASE_SECONDS, approved_by))
+            (invoice_id, amount, charge, key, json.dumps(request), now, now + LEASE_SECONDS, approved_by))
         return dict(c.execute("SELECT * FROM payments WHERE invoice_id=?", (invoice_id,)).fetchone())
 
 
@@ -281,7 +296,7 @@ def _judge(payment, report):
     if status != "paid":
         return "unknown", f"the payer reported '{status}'"
     problems = []
-    if report.get("amount_cents") != payment["amount_cents"]:
+    if report.get("amount_cents") != request.get("charge_cents", payment["amount_cents"]):
         problems.append("amount")
     if str(report.get("currency", "")).lower() != "usd":
         problems.append("currency")

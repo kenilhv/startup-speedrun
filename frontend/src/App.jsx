@@ -332,6 +332,9 @@ function Drawer({ inv, onClose, onApprove, onReject }) {
               <dl className="fields">
                 <dt>Status</dt><dd className={`pay-${inv.payment.status}`}>{inv.payment.status}</dd>
                 <dt>Paid by</dt><dd>{inv.payment.provider === "brainbase" ? "Brainbase payer agent (Link wallet)" : inv.payment.provider ?? "—"}</dd>
+                {inv.payment.charged_cents != null && inv.payment.charged_cents !== inv.payment.amount_cents && (
+                  <><dt>Demo charge</dt><dd className="muted">{usd(inv.payment.charged_cents)} actually charged for this demo</dd></>
+                )}
                 {inv.payment.task_id && (<><dt>Brainbase task</dt><dd className="link">{inv.payment.task_id}</dd></>)}
                 {inv.payment.order_id && (<><dt>Order / receipt</dt><dd className="link">{inv.payment.order_id}</dd></>)}
                 {inv.payment.stripe_transfer_id && (<><dt>Transfer</dt><dd className="link">{inv.payment.stripe_transfer_id}</dd></>)}

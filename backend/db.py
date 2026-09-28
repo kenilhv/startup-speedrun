@@ -41,7 +41,7 @@ def init_db():
             "idempotency_key": "TEXT", "request_json": "TEXT",
             "started_at": "REAL", "lease_until": "REAL DEFAULT 0",
             "error_code": "TEXT", "approved_by": "TEXT",
-            "provider": "TEXT DEFAULT 'stripe'", "provider_ref": "TEXT", "result_json": "TEXT",
+            "provider": "TEXT DEFAULT 'stripe'", "provider_ref": "TEXT", "result_json": "TEXT", "charged_cents": "INTEGER",
         })
         _ensure_columns(c, "events", {"type":"TEXT DEFAULT 'activity'"})
         c.executescript("""
@@ -64,7 +64,7 @@ INVOICE_SQL = """
 SELECT i.*, v.id vendor_id_join, v.name vendor_name, v.phone_on_file vendor_phone_on_file, v.bank_last4_on_file vendor_bank_last4_on_file,
  c.status call_status, c.outcome call_outcome, c.summary call_summary, c.attempt call_attempt,
  p.id payment_id, p.stripe_transfer_id payment_stripe_transfer_id, p.amount_cents payment_amount_cents, p.status payment_status,
- p.provider payment_provider, p.provider_ref payment_provider_ref, p.result_json payment_result_json, p.error_code payment_error_code
+ p.provider payment_provider, p.provider_ref payment_provider_ref, p.charged_cents payment_charged_cents, p.result_json payment_result_json, p.error_code payment_error_code
 FROM invoices i LEFT JOIN vendors v ON v.id=i.vendor_id
 LEFT JOIN calls c ON c.id=(SELECT id FROM calls WHERE invoice_id=i.id ORDER BY id DESC LIMIT 1)
 LEFT JOIN payments p ON p.invoice_id=i.id
@@ -80,7 +80,8 @@ def invoice_object(row):
     data["call"] = call if call["status"] else None
     payment_id = data.pop("payment_id")
     payment = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status"),
-               "provider":data.pop("payment_provider"), "task_id":data.pop("payment_provider_ref"), "error_code":data.pop("payment_error_code")}
+               "provider":data.pop("payment_provider"), "task_id":data.pop("payment_provider_ref"), "error_code":data.pop("payment_error_code"),
+               "charged_cents":data.pop("payment_charged_cents")}
     result = data.pop("payment_result_json")
     try: payment["order_id"] = (json.loads(result) or {}).get("order_id") if result else None
     except ValueError: payment["order_id"] = None

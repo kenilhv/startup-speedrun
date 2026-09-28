@@ -193,6 +193,27 @@ class BrainbasePayerTests(OfflineTestCase):
         self.assertEqual(db.get_invoice(invoice_id)["payment"]["order_id"], "ord_seen_in_link")
         db.clear_demo()
 
+    def test_demo_charge_pays_token_amount_and_shows_invoice_total(self):
+        with patch.dict(os.environ, {"BRAINBASE_DEMO_CHARGE_CENTS": "100", "BRAINBASE_PAY_MAX_CENTS": "100"}):
+            invoice_id, _ = self.dispatch(amount_cents=80000)
+            message = self.bb.posts[0][0]["initial_messages"][0]["content"]
+            self.assertIn("$1.00 USD (100 cents)", message)
+            self.assertIn("invoice total of $800.00", message)
+            key = self.payment(invoice_id)["idempotency_key"]
+            self.bb.finish(self.report(key, amount_cents=100))
+            [outcome] = brainbase_payer.poll_once()
+        self.assertIn("$800.00", outcome.message)
+        payment = db.get_invoice(invoice_id)["payment"]
+        self.assertEqual((payment["status"], payment["amount_cents"], payment["charged_cents"]), ("paid", 80000, 100))
+
+    def test_demo_charge_rejects_a_report_of_the_full_amount(self):
+        with patch.dict(os.environ, {"BRAINBASE_DEMO_CHARGE_CENTS": "100"}):
+            invoice_id, _ = self.dispatch(amount_cents=80000)
+            key = self.payment(invoice_id)["idempotency_key"]
+            self.bb.finish(self.report(key, amount_cents=80000))
+            [outcome] = brainbase_payer.poll_once()
+        self.assertEqual(outcome.kind, "escalated")
+
     def test_refused_post_is_failed(self):
         self.patch("backend.brainbase_payer._http", return_value=response(403, {"detail": "no"}))
         invoice_id = self.invoice()
