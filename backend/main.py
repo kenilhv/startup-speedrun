@@ -25,10 +25,15 @@ class Hub:
             except Exception: self.clients.discard(ws)
     async def invoice(self, invoice): await self.send({"type":"invoice.updated", "invoice": invoice})
     async def payment(self, receipt):
-        await self.invoice(db.get_invoice(receipt.invoice_id))
+        invoice = db.get_invoice(receipt.invoice_id)
+        await self.invoice(invoice)
         if receipt.activity:
             await self.send({"type": "activity", "invoice_id": receipt.invoice_id,
                              "message": receipt.activity["message"], "ts": receipt.activity["created_at"]})
+            try:
+                from .slack_notify import notify_paid
+                await notify_paid(invoice, receipt.activity["message"])
+            except Exception: log.exception("Slack paid notification failed for invoice %s", receipt.invoice_id)
     async def status(self, invoice_id, status, message):
         invoice = workflow.transition(invoice_id, status); db.add_event(invoice_id, message)
         await self.invoice(invoice); await self.send({"type":"activity", "invoice_id":invoice_id, "message":message, "ts":datetime.now(timezone.utc).isoformat()})
@@ -49,8 +54,18 @@ from .calling.webhooks import router as calling_router  # Kenil: /phone/<digits>
 app.include_router(calling_router)
 hub = Hub(); queue = CallQueue(hub); payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
+from .slack_socket import SlackSocket
+slack_socket = SlackSocket(lambda invoice_id, approved, actor: decide(invoice_id, approved, actor))
+
 @app.on_event("startup")
-async def startup(): db.init_db(); seed(); queue.start(); payment_watcher.start()
+async def startup():
+    db.init_db(); seed(); queue.start(); payment_watcher.start()
+    try:
+        if slack_socket.start(): log.info("Slack buttons via Socket Mode")
+    except Exception: log.exception("Slack Socket Mode failed to start; buttons on the board still work")
+
+@app.on_event("shutdown")
+async def shutdown(): slack_socket.stop()
 
 @app.get("/health")
 def health(): return {"ok": True}

@@ -57,7 +57,7 @@ class OfflineTestCase(unittest.TestCase):
         self.patch("dotenv.load_dotenv", return_value=False)
         environment = patch.dict(os.environ, {
             "MOCK_CALLS": "true", "STRIPE_SECRET_KEY": "", "STRIPE_WEBHOOK_SECRET": "",
-            "SLACK_BOT_TOKEN": "", "SLACK_CHANNEL_ID": "", "SLACK_SIGNING_SECRET": "",
+            "SLACK_BOT_TOKEN": "", "SLACK_CHANNEL_ID": "", "SLACK_SIGNING_SECRET": "", "SLACK_APP_TOKEN": "",
             "CLEAN_VENDOR_PHONE": "", "FAST_CONSULT_PHONE": "",
             "PAYCREW_WEBHOOK_SECRET": "offline-test-secret",
             "PAYMENT_PROVIDER": "brainbase_link", "BRAINBASE_PAYMENTS_ENABLED": "",
