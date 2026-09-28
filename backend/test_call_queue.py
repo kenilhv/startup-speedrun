@@ -49,7 +49,10 @@ class CallQueueTests(OfflineTestCase):
 
     def test_caller_exception_retries_then_escalates_and_queue_survives(self):
         from backend.main import queue
-        with patch("backend.calling.caller.start_verification_call", side_effect=RuntimeError("provider down")):
+        with db.connect() as c:
+            c.execute("UPDATE vendors SET phone_on_file='+15550100001' WHERE name='CleanVendor Inc'")
+        with patch.dict(os.environ, {"MOCK_CALLS": "false"}), \
+             patch("backend.calling.caller.start_verification_call", side_effect=RuntimeError("provider down")):
             first = self.flagged()
             self.client()
             queue.pending.put_nowait(first)
@@ -67,6 +70,37 @@ class CallQueueTests(OfflineTestCase):
             queue.pending.put_nowait(invoice_id)
             invoice = self.wait(invoice_id, {"escalated"})
             self.assertIsNone(invoice["call"])
+
+    def test_real_provider_gets_contract_args_and_webhook_settles(self):
+        seen = {}
+
+        def fake_call(invoice_id, vendor_name, phone, invoice_number, amount, last4, company):
+            seen.update(invoice_id=invoice_id, vendor=vendor_name, phone=phone, amount=amount, last4=last4)
+            return "web_1_abcd"
+        with db.connect() as c:
+            c.execute("UPDATE vendors SET phone_on_file='+15550100001' WHERE name='CleanVendor Inc'")
+        with patch.dict(os.environ, {"MOCK_CALLS": "false"}), \
+             patch("backend.calling.caller.start_verification_call", side_effect=fake_call):
+            invoice_id = self.flagged()
+            from backend.main import queue
+            client = self.client()
+            queue.pending.put_nowait(invoice_id)
+            self.wait(invoice_id, {"calling"})
+            deadline = time.time() + 2
+            while time.time() < deadline and not seen:
+                time.sleep(0.02)
+            self.assertEqual((seen["phone"], seen["amount"], seen["last4"]), ("+15550100001", "$480.00", "9921"))
+            r = client.post("/webhooks/call-result", headers={"X-PayCrew-Secret": "offline-test-secret"},
+                            json={"invoice_id": invoice_id, "provider_call_id": "web_1_abcd", "outcome": "denied",
+                                  "summary": "Vendor did not change bank details."})
+            self.assertEqual(r.status_code, 200)
+            invoice = self.wait(invoice_id, {"blocked"})
+            self.assertEqual(invoice["call"]["summary"], "Vendor did not change bank details.")
+
+    def test_kenil_routes_are_mounted(self):
+        client = self.client()
+        self.assertEqual(client.get("/phone/15550100001/poll").json(), {"ringing": False})
+        self.assertIn("text/html", client.get("/phone/15550100001").headers["content-type"])
 
     def test_restart_recovers_interrupted_calls(self):
         invoice_id = self.flagged()

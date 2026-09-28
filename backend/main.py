@@ -45,6 +45,8 @@ class Hub:
         except Exception: log.exception("Slack notification failed for invoice %s", invoice_id)
 
 pipeline_tasks = set()
+from .calling.webhooks import router as calling_router  # Kenil: /phone/<digits>, /webhooks/vapi, /webhooks/brainbase/*
+app.include_router(calling_router)
 hub = Hub(); queue = CallQueue(hub); payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
 @app.on_event("startup")

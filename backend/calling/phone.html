@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<title>Vendor Phone</title>
+<style>
+  :root {
+    --bg: #0b0d10; --fg: #f4f5f7; --muted: #8b93a1; --card: #1a1f29;
+    --green: #22c55e; --red: #ef4444; --line: #262c38;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  body { display: flex; justify-content: center;
+    padding: max(28px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom)); }
+  .screen { display: none; width: 100%; max-width: 420px; min-height: 100%;
+    flex-direction: column; align-items: center; justify-content: space-between; text-align: center; }
+  .screen.active { display: flex; }
+  .top { display: flex; flex-direction: column; align-items: center; width: 100%; padding-top: 24px; }
+  .label { color: var(--muted); font-size: 15px; letter-spacing: .01em; }
+  .name { font-size: 34px; font-weight: 600; line-height: 1.15; margin-top: 10px; overflow-wrap: anywhere; }
+  .sub { color: var(--muted); font-size: 17px; margin-top: 8px; }
+  .detail { color: var(--muted); font-size: 14px; margin-top: 14px; }
+  .avatar { width: 116px; height: 116px; border-radius: 50%; background: var(--card);
+    display: grid; place-items: center; font-size: 38px; font-weight: 600; margin-top: 40px; color: var(--fg); }
+  #ringing .avatar { animation: pulse 1.3s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.55); } 100% { box-shadow: 0 0 0 30px rgba(34,197,94,0); } }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); margin-top: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+  .dot.speaking { animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .timer { font-variant-numeric: tabular-nums; font-size: 20px; margin-top: 12px; color: var(--fg); }
+  .actions { display: flex; justify-content: center; gap: 72px; width: 100%; padding-bottom: 24px; }
+  .action { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+  .round { width: 76px; height: 76px; border-radius: 50%; border: 0; color: #fff; cursor: pointer;
+    display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+  .round:active { transform: scale(.94); }
+  .round svg { width: 32px; height: 32px; }
+  .green { background: var(--green); } .red { background: var(--red); }
+  .red svg { transform: rotate(135deg); }
+  .primary { width: 100%; min-height: 56px; border-radius: 14px; border: 0; background: var(--fg); color: var(--bg);
+    font-size: 17px; font-weight: 600; cursor: pointer; }
+  .primary:disabled { opacity: .5; }
+  .note { color: var(--muted); font-size: 14px; line-height: 1.5; margin-top: 16px; max-width: 32ch; }
+  .error { color: #fca5a5; font-size: 14px; margin-top: 14px; min-height: 1em; overflow-wrap: anywhere; }
+  .bottom { width: 100%; padding-bottom: 24px; }
+  .captions { width: 100%; margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+  .cap { background: var(--card); border-radius: 14px; padding: 12px 14px; font-size: 16px; line-height: 1.4; }
+  .cap:empty { display: none; }
+  .cap small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .sound { margin-top: 18px; min-height: 48px; padding: 0 20px; border-radius: 12px; border: 0;
+    background: var(--green); color: #04130a; font-size: 16px; font-weight: 600; cursor: pointer; display: none; }
+  @media (prefers-reduced-motion: reduce) { #ringing .avatar, .dot.speaking { animation: none; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="phone" viewBox="0 0 24 24"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></symbol>
+</svg>
+
+<section id="setup" class="screen active">
+  <div class="top">
+    <div class="label">PayCrew demo</div>
+    <div class="name">Vendor phone</div>
+    <div class="sub" id="setup-number"></div>
+    <p class="note">Tap below and allow the microphone. Keep this screen open; your phone rings here when PayCrew calls.</p>
+    <p class="error" id="setup-error" role="alert"></p>
+  </div>
+  <div class="bottom"><button class="primary" id="go-online">Go online</button></div>
+</section>
+
+<section id="idle" class="screen">
+  <div class="top">
+    <div class="status"><span class="dot"></span>Online</div>
+    <div class="name" style="font-size:28px">Waiting for calls</div>
+    <div class="sub" id="idle-number"></div>
+    <p class="note">Keep this tab in front and the screen on. If the phone locks, calls won't ring until you unlock it.</p>
+  </div>
+  <div></div>
+</section>
+
+<section id="ringing" class="screen" aria-live="assertive">
+  <div class="top">
+    <div class="label">Incoming call</div>
+    <div class="avatar" id="ring-initials">AP</div>
+    <div class="name" id="ring-company"></div>
+    <div class="sub">Accounts Payable</div>
+    <div class="detail" id="ring-detail"></div>
+  </div>
+  <div class="actions">
+    <div class="action"><button class="round red" id="decline" aria-label="Decline"><svg><use href="#phone"/></svg></button>Decline</div>
+    <div class="action"><button class="round green" id="answer" aria-label="Answer"><svg><use href="#phone"/></svg></button>Answer</div>
+  </div>
+</section>
+
+<section id="incall" class="screen">
+  <div class="top">
+    <div class="label">PayCrew verification</div>
+    <div class="avatar" id="call-initials">AP</div>
+    <div class="name" id="call-company"></div>
+    <div class="timer" id="timer">Connecting…</div>
+    <div class="status"><span class="dot" id="talk-dot"></span><span id="talk-status">Connecting</span></div>
+    <button class="sound" id="sound">Tap for sound</button>
+    <p class="error" id="call-error" role="alert"></p>
+    <div class="captions" aria-live="polite">
+      <div class="cap" id="cap-ai"></div>
+      <div class="cap" id="cap-you"></div>
+    </div>
+  </div>
+  <div class="actions">
+    <div class="action"><button class="round red" id="hangup" aria-label="End call"><svg><use href="#phone"/></svg></button>End</div>
+  </div>
+</section>
+
+<section id="ended" class="screen">
+  <div class="top">
+    <div class="label">Call ended</div>
+    <div class="name" id="ended-company"></div>
+    <div class="timer" id="ended-duration"></div>
+  </div>
+  <div></div>
+</section>
+
+<script type="module">
+const NUMBER = "__NUMBER__";
+const PUBLIC_KEY = "__VAPI_PUBLIC_KEY__";
+const BASE = location.pathname.replace(/\/+$/, "");
+const $ = (id) => document.getElementById(id);
+
+let Vapi = null, vapi = null, audioCtx = null, ringLoop = null, wakeLock = null;
+let current = null, callStarted = false, callStartAt = 0, tick = null, busy = false;
+
+function show(id) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
+}
+
+function formatNumber(d) {
+  const m = d.match(/^1?(\d{3})(\d{3})(\d{4})$/);
+  return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : `+${d}`;
+}
+
+function initials(name) {
+  return (name || "AP").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+}
+
+async function post(path, body) {
+  const r = await fetch(`${BASE}/${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+function ringBurst() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime, gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.18, t + 0.05);
+  gain.gain.setValueAtTime(0.18, t + 1.6);
+  gain.gain.linearRampToValueAtTime(0, t + 1.7);
+  gain.connect(audioCtx.destination);
+  for (const f of [440, 480]) {
+    const o = audioCtx.createOscillator();
+    o.frequency.value = f; o.connect(gain); o.start(t); o.stop(t + 1.75);
+  }
+  navigator.vibrate?.([900, 300, 400]);
+}
+
+function startRinging(call) {
+  current = call;
+  $("ring-company").textContent = call.company_name;
+  $("ring-initials").textContent = initials(call.company_name);
+  $("ring-detail").textContent = `Re: invoice ${call.invoice_number} from ${call.vendor_name} (${call.amount_display})`;
+  show("ringing");
+  ringBurst();
+  ringLoop = setInterval(ringBurst, 3000);
+}
+
+function stopRinging() {
+  clearInterval(ringLoop); ringLoop = null;
+  navigator.vibrate?.(0);
+}
+
+let pollTimer = null;
+async function checkOnce() {
+  if (busy) return;
+  try {
+    const r = await fetch(`${BASE}/poll`, { cache: "no-store" });
+    const d = await r.json();
+    if (d.ringing && !current) startRinging(d);
+    else if (!d.ringing && current && ringLoop) { stopRinging(); current = null; show("idle"); }
+  } catch (_) { /* network blip; keep polling */ }
+}
+async function poll() {
+  clearTimeout(pollTimer);
+  await checkOnce();
+  pollTimer = setTimeout(poll, 1000);
+}
+
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (_) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !vapi) return;
+  keepAwake();
+  audioCtx?.resume();
+  poll();
+});
+
+function setTalk(text, speaking) {
+  $("talk-status").textContent = text;
+  $("talk-dot").classList.toggle("speaking", !!speaking);
+}
+
+function finishCall() {
+  clearInterval(tick); tick = null;
+  $("sound").style.display = "none";
+  const secs = callStarted ? Math.round((Date.now() - callStartAt) / 1000) : 0;
+  $("ended-company").textContent = current?.company_name || "";
+  $("ended-duration").textContent = callStarted ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` : "";
+  show("ended");
+  current = null; callStarted = false; busy = false;
+  setTimeout(() => { if (!current) show("idle"); }, 4000);
+}
+
+async function failCall(reason) {
+  const call = current;
+  $("call-error").textContent = reason;
+  if (call && !callStarted) await post("decline", { call_id: call.call_id, reason }).catch(() => {});
+  setTimeout(finishCall, 2500);
+}
+
+function rlog(event, detail) {
+  fetch(`${BASE}/log`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, detail }) }).catch(() => {});
+}
+
+function audioEls() { return [...document.querySelectorAll("audio, video")]; }
+function audioState() {
+  return audioEls().map((a) => ({ tag: a.tagName, paused: a.paused, muted: a.muted, vol: a.volume,
+    stream: !!a.srcObject, ready: a.readyState }));
+}
+
+let maxLevel = 0;
+function checkAudio(label) {
+  const st = audioState();
+  rlog(label, { audio: st, maxAssistantLevel: Number(maxLevel.toFixed(3)), ua: navigator.userAgent });
+  if (st.some((a) => a.paused)) $("sound").style.display = "inline-block";
+}
+
+function setCaption(role, text) {
+  const who = role === "assistant" ? "PayCrew" : "You";
+  const el = $(role === "assistant" ? "cap-ai" : "cap-you");
+  el.innerHTML = "";
+  const s = document.createElement("small"); s.textContent = who;
+  el.append(s, document.createTextNode(text));
+}
+
+function wireVapi() {
+  vapi.on("message", (m) => {
+    if (m?.type === "transcript" && m.transcript) setCaption(m.role, m.transcript);
+  });
+  vapi.on("volume-level", (v) => { if (v > maxLevel) maxLevel = v; });
+  vapi.on("call-start", () => {
+    callStarted = true; callStartAt = Date.now();
+    setTalk("Connected", false);
+    rlog("call-start", {});
+    setTimeout(() => checkAudio("audio-after-2s"), 2000);
+    setTimeout(() => checkAudio("audio-after-6s"), 6000);
+    tick = setInterval(() => {
+      const s = Math.round((Date.now() - callStartAt) / 1000);
+      $("timer").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    }, 500);
+  });
+  vapi.on("speech-start", () => setTalk("PayCrew is speaking", true));
+  vapi.on("speech-end", () => setTalk("Listening", false));
+  vapi.on("call-end", () => { rlog("call-end", { maxAssistantLevel: Number(maxLevel.toFixed(3)) }); if (busy) finishCall(); });
+  vapi.on("error", (e) => {
+    const msg = e?.error?.message || e?.errorMsg || e?.message || "call error";
+    console.error("vapi error", e);
+    rlog("error", { msg: String(msg).slice(0, 300) });
+    if (!callStarted && busy) failCall(msg);
+  });
+}
+
+$("setup-number").textContent = formatNumber(NUMBER);
+$("idle-number").textContent = formatNumber(NUMBER);
+
+$("go-online").addEventListener("click", async () => {
+  const btn = $("go-online");
+  btn.disabled = true; $("setup-error").textContent = "";
+  try {
+    if (!PUBLIC_KEY) throw new Error("VAPI_PUBLIC_KEY is not set on the server.");
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    const mod = await import("https://cdn.jsdelivr.net/npm/@vapi-ai/web@2/+esm");
+    Vapi = typeof mod.default === "function" ? mod.default : mod.default.default;
+    vapi = new Vapi(PUBLIC_KEY);
+    wireVapi();
+    await keepAwake();
+    show("idle");
+    poll();
+  } catch (e) {
+    $("setup-error").textContent = e.name === "NotAllowedError"
+      ? "Microphone access was blocked. Allow it in your browser settings and try again."
+      : (e.message || String(e));
+    btn.disabled = false;
+  }
+});
+
+$("decline").addEventListener("click", async () => {
+  const call = current;
+  stopRinging(); current = null; show("idle");
+  if (call) await post("decline", { call_id: call.call_id }).catch(() => {});
+});
+
+$("answer").addEventListener("click", async () => {
+  if (!current || busy) return;
+  busy = true; stopRinging();
+  maxLevel = 0;
+  $("cap-ai").textContent = ""; $("cap-you").textContent = ""; $("sound").style.display = "none";
+  $("call-company").textContent = current.company_name;
+  $("call-initials").textContent = initials(current.company_name);
+  $("timer").textContent = "Connecting…"; $("call-error").textContent = "";
+  setTalk("Connecting", false);
+  show("incall");
+  try {
+    const { assistant } = await post("answer", { call_id: current.call_id });
+    const started = await vapi.start(assistant);
+    if (!started && !callStarted && busy) await failCall("Could not start the call");
+  } catch (e) {
+    await failCall(e.message || String(e));
+  }
+});
+
+$("sound").addEventListener("click", async () => {
+  for (const a of audioEls()) { a.muted = false; a.volume = 1; try { await a.play(); } catch (e) { rlog("play-failed", { msg: String(e) }); } }
+  $("sound").style.display = "none";
+  checkAudio("audio-after-tap");
+});
+
+$("hangup").addEventListener("click", () => {
+  rlog("hangup-tapped", { callStarted });
+  try { vapi.stop(); } catch (_) {}
+  if (!callStarted) failCall("Hung up before connecting");
+});
+</script>
+</body>
+</html>

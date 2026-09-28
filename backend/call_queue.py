@@ -107,10 +107,14 @@ class CallQueue:
 
         amount = _usd(invoice["amount_cents"])
         try:
-            from .calling.caller import start_verification_call
-            provider_id = await asyncio.to_thread(
-                start_verification_call, invoice_id, vendor["name"], vendor["phone_on_file"],
-                invoice["invoice_number"], amount, invoice.get("bank_last4_claimed"))
+            if mock:  # built-in mock: no provider, scripted answer below
+                provider_id = f"mock-{invoice_id}"
+            else:     # Kenil's caller (CALL_PROVIDER=web | vapi | brainbase | mock); result arrives via /webhooks/call-result
+                from .calling.caller import start_verification_call
+                provider_id = await asyncio.to_thread(
+                    start_verification_call, invoice_id, vendor["name"], vendor["phone_on_file"],
+                    invoice["invoice_number"], amount, invoice.get("bank_last4_claimed"),
+                    os.getenv("COMPANY_NAME", "Acme Supplies"))
         except ImportError:
             provider_id = None
         except Exception as exc:  # contract: the caller raises when it cannot start a call
