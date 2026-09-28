@@ -273,9 +273,9 @@ def _message_text(event):
     return ""
 
 
-def final_report(events, key):
-    """The payer's JSON report from its latest assistant message, or None if absent/ambiguous."""
-    for event in events:  # newest first
+def _reports(events):
+    """All PayCrew JSON reports in the payer's latest assistant message (newest-first events)."""
+    for event in events:
         kind = str(event.get("type", ""))
         if kind.removeprefix("subagent.") != "assistant.message":
             continue
@@ -287,9 +287,14 @@ def final_report(events, key):
                 continue
             if isinstance(value, dict) and "paycrew_payment_ref" in value:
                 found.append(value)
-        matching = [v for v in found if v.get("paycrew_payment_ref") == key]
-        return matching[0] if len(matching) == 1 else None
-    return None
+        return found
+    return []
+
+
+def final_report(events, key):
+    """The payer's JSON report from its latest assistant message, or None if absent/ambiguous."""
+    matching = [v for v in _reports(events) if v.get("paycrew_payment_ref") == key]
+    return matching[0] if len(matching) == 1 else None
 
 
 # Hosted checkouts that hand off to another host of the same provider.
@@ -400,7 +405,7 @@ def poll_once(now=None) -> list[Outcome]:
                         f"Brainbase payment task {task_id} has no final result after {int(timeout // 60)} min; "
                         "check Link and Brainbase before retrying"))
                 continue
-            if status != "success":
+            if status == "fail":
                 _mark(key, "failed", f"task_{status}")
                 outcomes.append(Outcome(payment["invoice_id"], "escalated",
                     f"Brainbase payment task {task_id} ended with '{status}'; nothing was marked paid"))
@@ -409,6 +414,16 @@ def poll_once(now=None) -> list[Outcome]:
                                {"order_by_received": "true", "desc": "true", "limit": "50"})
             events = events.get("items", []) if isinstance(events, dict) else events
             report = final_report(events or [], key)
+            if report is None and not _reports(events or []):
+                # "success"/"need_more_info" also mean the agent paused its turn, e.g. waiting for the
+                # owner's Link approval with a scheduled wake-up. Keep waiting until the timeout;
+                # a payment can still happen after this point, so never call it failed.
+                if now - payment["started_at"] > timeout:
+                    _mark(key, "unknown", "timeout")
+                    outcomes.append(Outcome(payment["invoice_id"], "escalated",
+                        f"Brainbase payment task {task_id} paused without a result for {int(timeout // 60)} min; "
+                        "check Link before retrying"))
+                continue
             verdict, detail = _judge(payment, report)
             if verdict == "paid":
                 outcome = _settle(payment, report, detail)

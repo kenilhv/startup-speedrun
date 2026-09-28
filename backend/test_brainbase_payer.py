@@ -150,12 +150,20 @@ class BrainbasePayerTests(OfflineTestCase):
         self.assertTrue(brainbase_payer._same_merchant("https://checkout.stripe.com/c/pay/cs_live_1", "https://buy.stripe.com/abc"))
         self.assertFalse(brainbase_payer._same_merchant("https://checkout.evil.com/pay", "https://buy.stripe.com/abc"))
 
-    def test_failed_task_or_report_is_failed_not_paid(self):
+    def test_failed_task_is_failed_not_paid(self):
         invoice_id, _ = self.dispatch()
         self.bb.finish(None, status="fail")
         [outcome] = brainbase_payer.poll_once()
         self.assertIn("ended with 'fail'", outcome.message)
         self.assertEqual(self.payment(invoice_id)["status"], "failed")
+
+    def test_paused_task_without_report_keeps_waiting(self):
+        invoice_id, _ = self.dispatch()
+        self.bb.finish(None, status="success", extra_text="Waiting for the owner's approval in Link.")
+        self.assertEqual(brainbase_payer.poll_once(), [])
+        self.assertEqual(self.payment(invoice_id)["status"], "pending")
+        [outcome] = brainbase_payer.poll_once(now=time.time() + 4000)
+        self.assertEqual((outcome.kind, self.payment(invoice_id)["status"]), ("escalated", "unknown"))
 
     def test_two_reports_are_ambiguous(self):
         invoice_id, _ = self.dispatch()
