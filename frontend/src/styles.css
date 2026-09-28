@@ -160,7 +160,8 @@ main { padding: 18px 22px; min-width: 0; }
 .wf-chip.red b { color: var(--red); }
 
 .workflow-scroll { position: relative; z-index: 1; overflow-x: auto; margin: 0 -6px; }
-.workflow-svg { display: block; width: 100%; min-width: 960px; height: auto; overflow: visible; }
+.workflow-stage { position: relative; min-width: 1000px; }
+.workflow-svg { display: block; width: 100%; height: auto; overflow: visible; }
 
 /* edges */
 .wf-edge .rail { fill: none; stroke: #e3efe7; stroke-width: 7; stroke-linecap: round; }
@@ -183,7 +184,7 @@ main { padding: 18px 22px; min-width: 0; }
 .wfn-wrap { width: 100%; height: 100%; padding: 14px; }
 .wfn {
   --c: #16a34a; --soft: #dcfce7;
-  position: relative; width: 170px; height: 62px; border-radius: 16px;
+  position: relative; width: 150px; height: 62px; border-radius: 16px; cursor: pointer; text-align: left;
   display: flex; align-items: center; gap: 9px; padding: 0 12px 0 9px;
   background: rgba(255,255,255,.96); border: 1.5px solid #e3efe7;
   box-shadow: 0 1px 2px rgba(16,60,35,.06), 0 10px 24px -12px rgba(16,60,35,.25);
@@ -548,3 +549,41 @@ blockquote { margin: 10px 0 0; padding: 12px 14px; border-left: 3px solid var(--
 .crew-mini i.done.warn { background: var(--orange); }
 .crew-mini i.done.fail { background: var(--red); }
 .crew-mini i.done.route { background: var(--blue); }
+
+/* crew group + chips */
+.wf-group rect { fill: rgba(236, 253, 245, .55); stroke: #b7e4c7; stroke-width: 1.5; stroke-dasharray: 6 6; }
+.wf-group.busy rect { fill: rgba(209, 250, 229, .6); stroke: #10b981; animation: flow 1.2s linear infinite; }
+.wf-group text { font: 800 11px Inter, system-ui, sans-serif; letter-spacing: .12em; fill: #047857; }
+.wfn.chip { gap: 7px; padding: 0 9px 0 7px; border-radius: 14px; }
+.wfn.chip .wfn-icon { width: 32px; height: 32px; font-size: 16px; border-radius: 10px; }
+.wfn.chip .wfn-name { font-size: 11.5px; }
+.wfn.chip .wfn-live { font-size: 10px; max-width: 80px; }
+.wfn { font: inherit; appearance: none; }
+.wfn.selected { border-color: var(--c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent), 0 14px 30px -12px color-mix(in srgb, var(--c) 55%, transparent); }
+.wfn:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+
+/* node popover */
+.wf-pop {
+  --c: #16a34a;
+  position: absolute; z-index: 6; width: 270px; transform-origin: top center;
+  translate: -50% 0; padding: 12px 14px; border-radius: 14px; cursor: default;
+  background: rgba(255,255,255,.98); border: 1px solid var(--line);
+  box-shadow: 0 18px 44px -12px rgba(16,60,35,.35), 0 0 0 4px color-mix(in srgb, var(--c) 10%, transparent);
+}
+.wf-pop.above { translate: -50% -100%; transform-origin: bottom center; }
+.wf-pop.tone-mint { --c: #10b981; } .wf-pop.tone-amber { --c: #d97706; } .wf-pop.tone-blue { --c: #0284c7; } .wf-pop.tone-red { --c: #dc2626; }
+.wf-pop-head { display: flex; align-items: center; gap: 10px; }
+.wf-pop-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 18px; background: color-mix(in srgb, var(--c) 14%, white); }
+.wf-pop-name { font-weight: 800; font-size: 14px; }
+.wf-pop-engine { display: inline-block; margin-top: 2px; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--panel-2); color: var(--muted); }
+.wf-pop-engine.claude { background: #fdf4ec; color: #c2410c; }
+.wf-pop-x { margin-left: auto; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 14px; align-self: flex-start; }
+.wf-pop-what { margin: 8px 0 8px; font-size: 12px; line-height: 1.45; color: #355244; }
+.wf-pop-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.wf-pop-stats > div { flex: 1 1 auto; min-width: 70px; padding: 5px 8px; border-radius: 9px; background: var(--panel-2); }
+.wf-pop-stats span { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wf-pop-stats b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.wf-pop-stats b.bad { color: var(--red); }
+.wf-pop-last { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wf-pop-last span { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wf-pop-last p { margin: 2px 0 0; font-size: 12px; line-height: 1.4; }
