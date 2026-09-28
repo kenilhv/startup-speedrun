@@ -12,6 +12,7 @@ import { createClient, USING_MOCK } from "./api.js";
 import { createMockClient } from "./mock.js";
 import { CHAPTERS, DemoCancelled, runDemo } from "./demo.js";
 import { Caption, ChapterBar, FlyIn, PhoneOverlay, SlackCard } from "./DemoOverlays.jsx";
+import Workflow from "./Workflow.jsx";
 import { bigWin, fraudBurst, paidBurst } from "./fx.js";
 
 const COLUMNS = [
@@ -459,6 +460,7 @@ export default function App() {
   const [phone, setPhone] = useState(null);
   const [slack, setSlack] = useState(null);
   const [fly, setFly] = useState(null);
+  const [flows, setFlows] = useState([]); // recent status changes, animated on the workflow
 
   const toast = useCallback((text, kind = "info") => {
     const id = Math.random();
@@ -502,6 +504,11 @@ export default function App() {
       const prev = lastStatus.current[inv.id];
       lastStatus.current[inv.id] = inv.status;
       if (prev !== undefined) celebrate(inv, prev);
+      if (prev !== inv.status && (prev !== undefined || inv.status === "received")) {
+        const flow = { id: Math.random(), from: prev, to: inv.status };
+        setFlows((f) => [...f.slice(-20), flow]);
+        setTimeout(() => setFlows((f) => f.filter((x) => x !== flow)), 2400);
+      }
       setInvoices((p) => ({ ...p, [inv.id]: inv }));
     },
     [celebrate]
@@ -712,6 +719,7 @@ export default function App() {
 
       <div className="layout">
         <main>
+          <Workflow invoices={list} flows={flows} />
           <DropZone onFiles={upload} />
           <LayoutGroup>
             <div className="board">
@@ -756,8 +764,8 @@ export default function App() {
                 key={a.key}
                 layout
                 className="feed-line"
-                initial={{ opacity: 0, x: 40, backgroundColor: "rgba(86,211,199,0.25)" }}
-                animate={{ opacity: 1, x: 0, backgroundColor: "rgba(86,211,199,0)" }}
+                initial={{ opacity: 0, x: 40, backgroundColor: "rgba(22,163,74,0.16)" }}
+                animate={{ opacity: 1, x: 0, backgroundColor: "rgba(22,163,74,0)" }}
                 transition={{ ...spring, backgroundColor: { duration: 1.5 } }}
                 onClick={() => a.invoice_id && invoices[a.invoice_id] && setOpenId(a.invoice_id)}
               >

@@ -19,7 +19,7 @@ export function paidBurst(el) {
     scalar: 0.9,
     ticks: 140,
     origin,
-    colors: ["#22c55e", "#86efac", "#56d3c7", "#facc15", "#ffffff"],
+    colors: ["#16a34a", "#22c55e", "#86efac", "#10b981", "#facc15"],
   });
 }
 
@@ -43,8 +43,8 @@ export function bigWin() {
   if (reduced()) return;
   const end = Date.now() + 900;
   (function frame() {
-    confetti({ particleCount: 6, angle: 60, spread: 60, origin: { x: 0, y: 0.8 }, colors: ["#22c55e", "#56d3c7", "#facc15"] });
-    confetti({ particleCount: 6, angle: 120, spread: 60, origin: { x: 1, y: 0.8 }, colors: ["#22c55e", "#56d3c7", "#facc15"] });
+    confetti({ particleCount: 6, angle: 60, spread: 60, origin: { x: 0, y: 0.8 }, colors: ["#16a34a", "#22c55e", "#84cc16"] });
+    confetti({ particleCount: 6, angle: 120, spread: 60, origin: { x: 1, y: 0.8 }, colors: ["#16a34a", "#22c55e", "#84cc16"] });
     if (Date.now() < end) requestAnimationFrame(frame);
   })();
 }
