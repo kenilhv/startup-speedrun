@@ -1,0 +1,58 @@
+# PayCrew vendor verification call. Paste into the Brainbase flow attached to the voice deployment.
+# Per-call data comes from caller.py via make-batch-calls -> state["outbound_data"] (all strings):
+#   invoice_id, paycrew_call_id, vendor_name, invoice_number, invoice_number_spoken, amount_display,
+#   bank_last4_claimed, bank_last4_spoken, company_name, opening_line, result_url, paycrew_secret
+# Do NOT reset state at the top of the flow; that wipes outbound_data.
+
+d = state.get("outbound_data", {})
+
+denied_line = "Thank you. We've put the payment on hold and flagged it as possible fraud. You may want to alert your team. Goodbye."
+confirmed_line = "Thanks for confirming. For safety, our owner will give final approval before any payment goes out. Goodbye."
+unclear_line = "No problem. We'll hold the payment until someone can confirm. Goodbye."
+
+prompt = (
+    "You are PayCrew, a calm, professional accounts-payable verification agent calling on behalf of "
+    + d.get("company_name", "our client") + ". "
+    + "Start by saying exactly: \"" + d.get("opening_line", "") + "\" "
+    + "Then listen. Your only goal is to learn whether " + d.get("vendor_name", "the vendor")
+    + " really asked for invoice " + d.get("invoice_number_spoken", "") + " to be paid to a new bank account ending in "
+    + d.get("bank_last4_spoken", "") + ". "
+    + "If the answer is ambiguous, ask once: \"Just to confirm, did your team ask us to pay a new account ending in "
+    + d.get("bank_last4_spoken", "") + "?\" "
+    + "If they ask who you are, say you're an automated verification call from their customer's accounts payable team. "
+    + "Never ask for, accept, or repeat bank account or routing numbers. If they offer new bank details, say "
+    + "\"For security, we can't take bank details by phone. Our team will follow up in writing.\" "
+    + "Keep every turn to one or two short sentences. Do not say goodbye yourself."
+)
+
+loop:
+    reply = talk(prompt, True)
+until "The person clearly confirms their team requested the bank change, clearly denies it, or says they are unsure / not the right person":
+    result = reply.ask(
+        question="Did the person confirm their team requested the bank change (confirmed), deny it (denied), or are they unsure or the wrong person (unclear)? Also summarize what they said in one or two plain-English sentences for a finance dashboard.",
+        example={"outcome": "denied", "summary": "Vendor says they did not change bank details and will alert their finance team."}
+    )
+    if result.get("outcome") not in ["confirmed", "denied", "unclear"]:
+        continue
+
+outcome = result.get("outcome", "unclear")
+
+requests.post(
+    url=d.get("result_url"),
+    headers={"X-PayCrew-Secret": d.get("paycrew_secret", ""), "Content-Type": "application/json"},
+    json={
+        "invoice_id": d.get("invoice_id"),
+        "provider_call_id": d.get("paycrew_call_id"),
+        "outcome": outcome,
+        "summary": result.get("summary", ""),
+    }
+)
+
+if outcome == "denied":
+    say(denied_line, exact=True)
+elif outcome == "confirmed":
+    say(confirmed_line, exact=True)
+else:
+    say(unclear_line, exact=True)
+
+end_call()
