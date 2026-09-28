@@ -15,7 +15,7 @@ async def notify_blocked(invoice, summary):
     vendor = (invoice.get("vendor") or {}).get("name", invoice.get("vendor_name_raw", "Unknown vendor"))
     amount = f"${(invoice.get('amount_cents') or 0) / 100:,.2f}"
     call = (invoice.get("call") or {}).get("summary")
-    blocks = [{"type":"section","text":{"type":"mrkdwn","text":f":rotating_light: *Fraud stopped* · {invoice.get('invoice_number')}\n{amount} payment to *{vendor}* blocked.\n{summary}" + (f"\n>{call}" if call else "")}}]
+    blocks = [{"type":"section","text":{"type":"mrkdwn","text":f":rotating_light: *Fraud stopped* · {invoice.get('invoice_number')}\n{amount} payment to *{vendor}* blocked." + ("" if summary.startswith("Fraud stopped") else f"\n{summary}") + (f"\n>{call}" if call else "")}}]
     return await asyncio.to_thread(_post, blocks, "PayCrew blocked a payment")
 
 async def notify_approval(invoice, summary):
@@ -27,7 +27,7 @@ async def notify_approval(invoice, summary):
     return await asyncio.to_thread(_post, blocks, "PayCrew payment approval needed")
 
 async def notify_escalated(invoice, reason):
-    blocks = [{"type":"section","text":{"type":"mrkdwn","text":f":warning: *Invoice escalated*\n{reason}\nNeeds a human."}}]
+    blocks = [{"type":"section","text":{"type":"mrkdwn","text":f":warning: *Invoice escalated* · {invoice.get('invoice_number') or 'new invoice'}\n{reason}" + ("" if "needs a human" in reason.lower() else "\nNeeds a human.")}}]
     return await asyncio.to_thread(_post, blocks, "PayCrew invoice escalated")
 
 async def notify_paid(invoice, message):
