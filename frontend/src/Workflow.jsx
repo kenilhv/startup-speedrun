@@ -11,7 +11,7 @@ const NH = 62;
 
 const NODES = {
   inbox: { x: 20, y: 129, icon: "📥", name: "Intake", tone: "green" },
-  claude: { x: 225, y: 129, icon: "🧠", name: "Claude Analyst", tone: "mint" },
+  claude: { x: 225, y: 129, icon: "🧠", name: "Analysis Crew", tone: "mint" },
   rules: { x: 430, y: 129, icon: "⚖️", name: "Risk Rules", tone: "green" },
   payer: { x: 1010, y: 30, icon: "💳", name: "Brainbase Payer", tone: "green" },
   owner: { x: 845, y: 129, icon: "👤", name: "Owner · Slack", tone: "amber" },
@@ -208,7 +208,9 @@ export default function Workflow({ invoices, flows }) {
 
   const live = {
     inbox: counts.inbox ? `${counts.inbox} waiting` : "Listening",
-    claude: sample.claude ? `Reading ${sample.claude.invoice_number}` : "Ready",
+    claude: sample.claude
+      ? (sample.claude.analysis ?? []).find((s) => s.state === "running")?.name ?? `Reading ${sample.claude.invoice_number ?? "invoice"}`
+      : "Ready",
     rules: hotNodes.has("rules") ? "Scoring risk…" : "Ready",
     payer: sample.payer?.status === "paying" ? `Paying ${sample.payer.invoice_number} via Link` : paid ? `${usd(paid)} paid` : "Ready",
     owner: counts.owner ? `${counts.owner} need a decision` : "All clear",
@@ -217,7 +219,7 @@ export default function Workflow({ invoices, flows }) {
     blocked: saved ? `${usd(saved)} saved` : "Watching",
   };
   const sub = {
-    claude: "reads every PDF",
+    claude: "6 agents · Claude",
     rules: "checks vendor file",
     caller: "calls number on file",
     queue: "one call at a time",

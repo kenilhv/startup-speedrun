@@ -62,7 +62,7 @@ class OfflineTestCase(unittest.TestCase):
             "PAYCREW_WEBHOOK_SECRET": "offline-test-secret",
             "PAYMENT_PROVIDER": "brainbase_link", "BRAINBASE_PAYMENTS_ENABLED": "",
             "BRAINBASE_TOKEN": "", "BRAINBASE_PAYER_AGENT_ID": "", "BRAINBASE_PAY_MAX_CENTS": "",
-            "VENDOR_PAYMENT_URLS": "", "MOCK_CALL_DELAY_SECONDS": "0", "MOCK_CALL_OUTCOMES": "", "BRAINBASE_DEMO_CHARGE_CENTS": "",
+            "VENDOR_PAYMENT_URLS": "", "MOCK_CALL_DELAY_SECONDS": "0", "MOCK_CALL_OUTCOMES": "", "BRAINBASE_DEMO_CHARGE_CENTS": "", "ANTHROPIC_API_KEY": "",
         })
         environment.start()
         self.addCleanup(environment.stop)

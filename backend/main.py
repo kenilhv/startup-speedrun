@@ -44,6 +44,7 @@ class Hub:
                 await notify_escalated(invoice, message)
         except Exception: log.exception("Slack notification failed for invoice %s", invoice_id)
 
+pipeline_tasks = set()
 hub = Hub(); queue = CallQueue(hub); payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
 @app.on_event("startup")
@@ -74,7 +75,9 @@ async def upload(background_tasks: BackgroundTasks, files: list[UploadFile] = Fi
         with db.connect() as c:
             cur = c.execute("INSERT INTO invoices(filename,pdf_path,status) VALUES (?,?,?)", (file.filename, str(path), "received")); invoice_id = cur.lastrowid
         invoice = db.get_invoice(invoice_id); created.append(invoice); await hub.invoice(invoice)
-        background_tasks.add_task(pipeline.process, invoice_id, hub, queue)
+        # One task per file so invoices are analyzed in parallel, not one after another.
+        task = asyncio.create_task(pipeline.process(invoice_id, hub, queue))
+        pipeline_tasks.add(task); task.add_done_callback(pipeline_tasks.discard)
     return created
 
 async def decide(invoice_id: int, approved: bool, actor="dashboard"):

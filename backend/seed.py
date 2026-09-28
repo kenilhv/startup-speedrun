@@ -15,6 +15,13 @@ VENDORS = [
     ("TechSoftware Inc", "0033", None), ("CleanVendor Inc", "0042", None),
     ("FastConsult LLC", "0055", None),
 ]
+PURCHASE_ORDERS = [
+    ("PO-1001", "OfficeSupplyCo", 80000, "Printer paper and toner"),
+    ("PO-1002", "PaperWorks Ltd", 35000, "Custom letterhead printing"),
+    ("PO-1003", "TechSoftware Inc", 120000, "Annual software licenses"),
+    ("PO-1005", "FastConsult LLC", 450000, "Finance process consulting"),
+]
+
 def seed():
     db.init_db()
     with db.connect() as c:
@@ -23,6 +30,10 @@ def seed():
             phone = os.getenv(variable) or None if variable else phone
             c.execute("""INSERT INTO vendors(name,bank_last4_on_file,phone_on_file) VALUES (?,?,?)
                 ON CONFLICT(name) DO UPDATE SET phone_on_file=COALESCE(excluded.phone_on_file,vendors.phone_on_file)""", (name, bank, phone))
+        # Purchase orders for the PO Matcher agent (MASTER.md demo set; CleanVendor has none).
+        for po, vendor_name, cents, desc in PURCHASE_ORDERS:
+            c.execute("""INSERT INTO purchase_orders(po_number,vendor_id,amount_cents,description)
+                SELECT ?, id, ?, ? FROM vendors WHERE name=? ON CONFLICT(po_number) DO NOTHING""", (po, cents, desc, vendor_name))
         # Trusted checkout links for Brainbase + Link payments. Only ever from our own config,
         # never from an invoice. JSON object keyed by vendor name.
         for name, (url, merchant) in _payment_urls().items():

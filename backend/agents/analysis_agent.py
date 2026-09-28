@@ -103,7 +103,8 @@ def _extract_with_claude(pdf_bytes: bytes) -> dict:
     client = anthropic.Anthropic()
     response = client.messages.parse(
         model=MODEL,
-        max_tokens=16000,
+        max_tokens=4000,
+        output_config={"effort": "low"},
         messages=[{
             "role": "user",
             "content": [
@@ -162,7 +163,8 @@ def extract_invoice(pdf_bytes: bytes) -> dict:
     """Returns {vendor_name, invoice_number, amount_cents, currency, due_date,
     bank_last4, po_reference, confidence}. Never raises: on failure returns {"error": "..."}."""
     errors = []
-    for attempt in (1, 2) if _is_pdf(pdf_bytes) else ():
+    use_claude = _is_pdf(pdf_bytes) and bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    for attempt in (1, 2) if use_claude else ():
         try:
             result = _extract_with_claude(pdf_bytes)
             if _usable(result):
@@ -174,7 +176,7 @@ def extract_invoice(pdf_bytes: bytes) -> dict:
             if type(e).__name__ in ("AuthenticationError", "PermissionDeniedError") or \
                     "api_key" in str(e).lower() or "authentication" in str(e).lower():
                 break  # retrying won't help
-    _log(("; ".join(errors) or "not a PDF") + " -> regex fallback")
+    _log(("; ".join(errors) or ("no ANTHROPIC_API_KEY" if _is_pdf(pdf_bytes) else "not a PDF")) + " -> regex fallback")
 
     try:
         result = _extract_with_regex(pdf_bytes)

@@ -67,6 +67,35 @@ function Bump({ value, children, className }) {
   );
 }
 
+const STEP_ICON = { pass: "✓", warn: "!", fail: "✕", route: "→", info: "i" };
+
+function CrewTrace({ steps }) {
+  if (!steps?.length) return null;
+  return (
+    <ol className="crew">
+      {steps.map((s, i) => (
+        <motion.li
+          key={s.id}
+          className={`crew-step ${s.state} ${s.status ?? ""}`}
+          initial={{ opacity: 0, x: 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.05 }}
+        >
+          <span className="crew-dot">{s.state === "running" ? <span className="crew-spin" /> : s.state === "done" ? STEP_ICON[s.status] ?? "•" : i + 1}</span>
+          <div className="crew-body">
+            <div className="crew-head">
+              <b>{s.name}</b>
+              <span className={`crew-engine ${String(s.engine).includes("Claude") ? "claude" : ""}`}>{s.engine}</span>
+              {s.ms != null && s.state === "done" && <span className="crew-ms">{s.ms < 1000 ? `${s.ms}ms` : `${(s.ms / 1000).toFixed(1)}s`}</span>}
+            </div>
+            <div className="crew-finding">{s.state === "running" ? "Working…" : s.state === "pending" ? "Waiting" : s.finding}</div>
+          </div>
+        </motion.li>
+      ))}
+    </ol>
+  );
+}
+
 function RiskBadge({ level }) {
   if (!level) return null;
   return (
@@ -172,7 +201,10 @@ function Card({ inv, callStart, onOpen, ref }) {
         {inv.status === "received" && <div className="note muted">Queued for analysis</div>}
         {inv.status === "analyzing" && (
           <div className="note scanning">
-            <ScanDoc /> Claude is reading…
+            <ScanDoc /> {(inv.analysis ?? []).filter((s) => s.state === "running").map((s) => s.name).join(" + ") || "Claude is reading…"}
+            <span className="crew-mini">
+              {(inv.analysis ?? []).map((s) => <i key={s.id} className={`${s.state} ${s.status ?? ""}`} />)}
+            </span>
           </div>
         )}
         {inv.status === "flagged" && <div className="note warn">🚩 {inv.risk_reasons?.[0] ?? "Flagged"}</div>}
@@ -283,6 +315,13 @@ function Drawer({ inv, onClose, onApprove, onReject }) {
               </ul>
             )}
           </motion.section>
+
+          {inv.analysis?.length > 0 && (
+            <motion.section variants={item}>
+              <h3>Analysis crew · {inv.analysis.filter((s) => s.state === "done").length}/{inv.analysis.length} agents</h3>
+              <CrewTrace steps={inv.analysis} />
+            </motion.section>
+          )}
 
           <motion.section variants={item}>
             <h3>Bank account check</h3>

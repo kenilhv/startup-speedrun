@@ -36,9 +36,10 @@ export async function runDemo({ sim, ui, wait }) {
 
   // 3. Analyze
   ui.chapter(2);
-  ui.caption({ title: "Claude reads every PDF.", sub: "Vendor, amount, due date, and the bank account the money would go to." });
+  ui.caption({ title: "A six-agent crew analyzes every PDF.", sub: "Claude parses and hunts for fraud; PO, duplicate and risk agents check our records." });
   for (const inv of created) {
-    sim.set(inv.id, { status: "analyzing" }, `Claude is reading ${inv.invoice_number}`);
+    sim.set(inv.id, { status: "analyzing", analysis: sim.trace(inv.id, 0) }, `Analysis crew started on ${inv.invoice_number}`);
+    for (let k = 1; k <= 6; k++) setTimeout(() => sim.set(inv.id, { analysis: sim.trace(inv.id, k) }), k * 300);
     await wait(350);
   }
   await wait(2200);

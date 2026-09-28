@@ -92,8 +92,25 @@ export function createMockClient({ onInvoice, onActivity, onConnection }) {
     });
   }
 
+  function crewTrace(inv, upto) {
+    const risky = inv.bank_last4_claimed !== inv.bank_last4_on_file;
+    const done = [
+      ["invoice_parser", "Invoice Parser", "Claude", "pass", `${inv.vendor_name_raw} · ${inv.invoice_number} · ${usd(inv.amount_cents)}`],
+      ["po_matcher", "PO Matcher", "rules", inv.invoice_number === "INV-910" ? "warn" : "pass", inv.invoice_number === "INV-910" ? "No purchase order on the invoice" : "Matches purchase order"],
+      ["duplicate_detector", "Duplicate Detector", "rules", "pass", "No earlier invoice with this number"],
+      ["fraud_signal", "Fraud Signal", "Claude", risky ? "fail" : "pass", risky ? `Bank account changed: invoice ••••${inv.bank_last4_claimed}, file ••••${inv.bank_last4_on_file}` : "Matches the vendor file"],
+      ["risk_scorer", "Risk Scorer", "rules + Claude", risky ? "fail" : "pass", risky ? "CRITICAL: bank details changed, verify by phone first" : "LOW: all checks passed"],
+      ["approval_router", "Approval Router", "rules", "route", risky ? "Call the vendor on the number already on file" : "Low risk: pay automatically"],
+    ];
+    return done.map(([id, name, engine, status, finding], i) => ({
+      id, name, engine, status: i < upto ? status : null, finding: i < upto ? finding : null,
+      state: i < upto ? "done" : i === upto ? "running" : "pending", ms: i < upto ? 300 + i * 450 : null,
+    }));
+  }
+
   function process(inv, delay) {
-    later(delay, () => update(inv.id, { status: "analyzing" }, `Claude is reading ${inv.invoice_number}`));
+    later(delay, () => update(inv.id, { status: "analyzing", analysis: crewTrace(inv, 0) }, `Analysis crew started on ${inv.invoice_number}`));
+    for (let k = 1; k <= 6; k++) later(delay + k * 320, () => update(inv.id, { analysis: crewTrace(inv, k) }));
     later(delay + 2200, () => {
       const reasons = [];
       let level = "low";
@@ -165,6 +182,7 @@ export function createMockClient({ onInvoice, onActivity, onConnection }) {
       set: (id, patch, message) => update(id, patch, message),
       pay: (id) => pay(invoices.find((i) => i.id === id)),
       get: (id) => invoices.find((i) => i.id === id),
+      trace: (id, upto) => crewTrace(invoices.find((i) => i.id === id), upto),
     },
     close() {
       timers.forEach(clearTimeout);

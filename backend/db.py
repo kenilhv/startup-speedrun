@@ -34,7 +34,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, invoice_id INTEGER, type TEXT DEFAULT 'activity', message TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         """)
         _ensure_columns(c, "vendors", {"email":"TEXT", "payment_url":"TEXT", "checkout_merchant":"TEXT"})
-        _ensure_columns(c, "invoices", {"vendor_name_raw":"TEXT", "currency":"TEXT DEFAULT 'usd'", "due_date":"TEXT", "bank_last4_claimed":"TEXT", "source":"TEXT DEFAULT 'upload'"})
+        _ensure_columns(c, "invoices", {"vendor_name_raw":"TEXT", "currency":"TEXT DEFAULT 'usd'", "due_date":"TEXT", "bank_last4_claimed":"TEXT", "source":"TEXT DEFAULT 'upload'", "analysis_json":"TEXT", "po_reference":"TEXT"})
+        c.execute("CREATE TABLE IF NOT EXISTS purchase_orders (id INTEGER PRIMARY KEY, po_number TEXT UNIQUE NOT NULL, vendor_id INTEGER NOT NULL, amount_cents INTEGER NOT NULL, description TEXT)")
         _ensure_columns(c, "calls", {"status":"TEXT DEFAULT 'queued'", "transcript":"TEXT", "started_at":"TEXT", "ended_at":"TEXT"})
         _ensure_columns(c, "payments", {"stripe_transfer_id":"TEXT"})
         _ensure_columns(c, "payments", {
@@ -56,8 +57,9 @@ def init_db():
         """)
 
 def _decode(data):
-    for key in ("risk_reasons", "fields_json"):
+    for key in ("risk_reasons", "fields_json", "analysis_json"):
         if data.get(key): data[key] = json.loads(data[key])
+    data["analysis"] = data.pop("analysis_json", None) or []
     return data
 
 INVOICE_SQL = """
@@ -98,7 +100,7 @@ def list_events():
     with connect() as c: return [dict(r) for r in c.execute("SELECT * FROM events ORDER BY id DESC LIMIT 100")]
 
 def update_invoice(invoice_id, **fields):
-    for key in ("risk_reasons", "fields_json"):
+    for key in ("risk_reasons", "fields_json", "analysis_json"):
         if key in fields and not isinstance(fields[key], str): fields[key] = json.dumps(fields[key])
     values = list(fields.values()) + [invoice_id]
     sql = ", ".join(f"{k}=?" for k in fields) + ", updated_at=CURRENT_TIMESTAMP"
