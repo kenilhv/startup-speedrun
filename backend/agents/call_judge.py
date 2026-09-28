@@ -15,11 +15,16 @@ class CallVerdict(BaseModel):
 PROMPT = """This is the transcript of a verification call. The AGENT asked {vendor} whether they really asked
 {company} to pay invoice {invoice} ({amount}) to a NEW bank account ending in {last4}.
 
+Judge the VENDOR's final, clear answer. If they hesitate, use filler words or change their mind before
+settling on a clear yes or no, use that final answer and mention the hesitation in the summary. A
+"confirmed" outcome never pays by itself: the business owner still approves or rejects it.
+
 outcome:
-- confirmed: the VENDOR clearly said yes, their team requested the change
-- denied: the VENDOR clearly said no, or did not recognize the request
-- unclear: anything else (unsure, wrong person, no real answer)
-summary: one or two plain-English sentences for a finance dashboard describing what the vendor said.
+- confirmed: the vendor's final answer is clearly yes, their team requested the change
+- denied: the vendor's final answer is clearly no, or they do not recognize the request
+- unclear: no clear final yes or no (unsure, wrong person, silence, only questions)
+summary: one or two plain-English sentences for a finance dashboard describing what the vendor said,
+including any hesitation or change of answer.
 
 Transcript:
 {transcript}"""
