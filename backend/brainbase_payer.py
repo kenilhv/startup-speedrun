@@ -343,9 +343,9 @@ def _settle(payment, report, order_id):
         current = c.execute("SELECT * FROM payments WHERE id=?", (payment["id"],)).fetchone()
         if not current or current["status"] != "pending":
             return None
-        c.execute("UPDATE payments SET status='paid',result_json=?,stripe_transfer_id=NULL,lease_until=0 WHERE id=?",
+        c.execute("UPDATE payments SET status='paid',result_json=?,stripe_transfer_id=NULL,lease_until=0,error_code=NULL WHERE id=?",
                   (json.dumps(report), payment["id"]))
-        c.execute("UPDATE invoices SET status='settled',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='paying'",
+        c.execute("UPDATE invoices SET status='settled',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('paying','settled')",
                   (payment["invoice_id"],))
         vendor = c.execute("SELECT v.name FROM invoices i JOIN vendors v ON v.id=i.vendor_id WHERE i.id=?",
                            (payment["invoice_id"],)).fetchone()
@@ -441,12 +441,41 @@ def poll_once(now=None) -> list[Outcome]:
     return outcomes
 
 
+def demo_auto_settle(now=None) -> list[Outcome]:
+    """Demo only (BRAINBASE_DEMO_SETTLE_SECONDS): show a paying invoice as paid after N seconds.
+
+    The real Brainbase payment keeps running: its payments row stays 'pending' and is still watched,
+    and the drawer labels this as a demo settlement until a real receipt arrives.
+    """
+    raw = os.getenv("BRAINBASE_DEMO_SETTLE_SECONDS", "").strip()
+    if not raw.isdigit() or int(raw) <= 0:
+        return []
+    now = now or time.time()
+    outcomes = []
+    with db.connect() as c:
+        c.execute("BEGIN IMMEDIATE")
+        rows = [dict(r) for r in c.execute("""SELECT p.*, i.status invoice_status FROM payments p JOIN invoices i ON i.id=p.invoice_id
+            WHERE p.provider='brainbase' AND p.status='pending' AND i.status='paying' AND p.started_at<=?""", (now - int(raw),))]
+        for p in rows:
+            c.execute("UPDATE invoices SET status='settled',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='paying'", (p["invoice_id"],))
+            c.execute("UPDATE payments SET error_code='demo_settled' WHERE id=?", (p["id"],))
+            vendor = c.execute("SELECT v.name FROM invoices i JOIN vendors v ON v.id=i.vendor_id WHERE i.id=?", (p["invoice_id"],)).fetchone()
+            message = (f"Paid {vendor['name'] if vendor else 'vendor'} {_usd(p['amount_cents'])} "
+                       f"(demo settlement; Brainbase Link payment still running, task {p['provider_ref']})")
+            event_id = c.execute("INSERT INTO events(invoice_id,type,message) VALUES (?,'payment.demo',?)", (p["invoice_id"], message)).lastrowid
+            outcomes.append(Outcome(p["invoice_id"], "settled", message,
+                                    dict(c.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()), None))
+    return outcomes
+
+
 class PaymentWatcher:
     """Background loop that turns finished Brainbase payment tasks into invoice updates."""
 
     def __init__(self, hub, interval=None):
         self.hub = hub
         self.interval = interval or float(os.getenv("BRAINBASE_POLL_SECONDS", "5"))
+        if os.getenv("BRAINBASE_DEMO_SETTLE_SECONDS", "").strip().isdigit():
+            self.interval = min(self.interval, 3.0)
         self.task = None
 
     def start(self):
@@ -462,7 +491,7 @@ class PaymentWatcher:
             if not enabled():
                 continue
             try:
-                outcomes = await asyncio.to_thread(poll_once)
+                outcomes = await asyncio.to_thread(demo_auto_settle) + await asyncio.to_thread(poll_once)
             except Exception:
                 log.exception("Brainbase payment poll failed")
                 continue

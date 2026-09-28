@@ -120,7 +120,10 @@ def add_event(invoice_id, message, event_type="activity"):
 def clear_demo():
     with connect() as c:
         c.execute("BEGIN IMMEDIATE")
-        if c.execute("SELECT 1 FROM payments WHERE status IN ('pending','unknown') LIMIT 1").fetchone():
+        import os
+        demo = os.getenv("BRAINBASE_DEMO_SETTLE_SECONDS", "").strip().isdigit()  # capped demo charges only
+        blocking = "status IN ('pending','unknown') AND NOT (provider='brainbase' AND ?)"
+        if c.execute(f"SELECT 1 FROM payments WHERE {blocking} LIMIT 1", (demo,)).fetchone():
             raise ValueError("Cannot reset while a Stripe payment is unresolved")
         for table in ("calls", "payments", "events", "invoices"):
             c.execute(f"DELETE FROM {table}")

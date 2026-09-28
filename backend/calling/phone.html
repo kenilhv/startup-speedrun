@@ -127,6 +127,7 @@
 
 <script type="module">
 const NUMBER = "__NUMBER__";
+const PAGE_VERSION = "__VERSION__";
 const PUBLIC_KEY = "__VAPI_PUBLIC_KEY__";
 const BASE = location.pathname.replace(/\/+$/, "");
 const $ = (id) => document.getElementById(id);
@@ -191,6 +192,7 @@ async function checkOnce() {
   try {
     const r = await fetch(`${BASE}/poll`, { cache: "no-store" });
     const d = await r.json();
+    if (d.version && d.version !== PAGE_VERSION && !current) { location.reload(); return; } // server has a newer page
     if (d.ringing && !current) startRinging(d);
     else if (!d.ringing && current && ringLoop) { stopRinging(); current = null; show("idle"); }
   } catch (_) { /* network blip; keep polling */ }
@@ -262,7 +264,9 @@ function setCaption(role, text) {
 
 // Mirror the live transcript to the PayCrew board (partials throttled, finals always sent).
 const lastSent = {};
+let finals = [], liveCallId = null, endedSent = false;
 function liveTranscript(role, text, final) {
+  if (final) finals.push({ role, text });
   if (!current) return;
   const now = Date.now();
   if (!final && now - (lastSent[role] || 0) < 250) return;
@@ -280,6 +284,7 @@ function wireVapi() {
   vapi.on("volume-level", (v) => { if (v > maxLevel) maxLevel = v; });
   vapi.on("call-start", () => {
     callStarted = true; callStartAt = Date.now();
+    finals = []; endedSent = false; liveCallId = current?.call_id || null;
     if (current) post("live", { call_id: current.call_id, event: "started" }).catch(() => {});
     setTalk("Connected", false);
     rlog("call-start", {});
@@ -292,7 +297,11 @@ function wireVapi() {
   });
   vapi.on("speech-start", () => setTalk("PayCrew is speaking", true));
   vapi.on("speech-end", () => setTalk("Listening", false));
-  vapi.on("call-end", () => { rlog("call-end", { maxAssistantLevel: Number(maxLevel.toFixed(3)) }); if (busy) finishCall(); });
+  vapi.on("call-end", () => {
+    rlog("call-end", { maxAssistantLevel: Number(maxLevel.toFixed(3)) });
+    reportEnded();
+    if (busy) finishCall();
+  });
   vapi.on("error", (e) => {
     const msg = e?.error?.message || e?.errorMsg || e?.message || "call error";
     console.error("vapi error", e);
@@ -359,8 +368,19 @@ $("sound").addEventListener("click", async () => {
   checkAudio("audio-after-tap");
 });
 
+// Tell the backend the call is over, with everything that was said, so the invoice moves on
+// right away (the provider's end-of-call webhook is only a backup).
+function reportEnded() {
+  if (endedSent || !liveCallId) return;
+  endedSent = true;
+  const body = JSON.stringify({ call_id: liveCallId, transcript: finals });
+  if (!navigator.sendBeacon?.(`${BASE}/ended`, new Blob([body], { type: "application/json" })))
+    fetch(`${BASE}/ended`, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+}
+
 $("hangup").addEventListener("click", () => {
   rlog("hangup-tapped", { callStarted });
+  if (callStarted) reportEnded();
   try { vapi.stop(); } catch (_) {}
   if (!callStarted) failCall("Hung up before connecting");
 });

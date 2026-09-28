@@ -8,7 +8,9 @@ import secrets
 import threading
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from .results import post_result_sync
@@ -20,6 +22,9 @@ RINGING: dict[str, dict] = {}   # phone digits -> ringing call
 ANSWERED: dict[str, dict] = {}  # call_id -> answered call
 WEB_CALLS: dict[str, dict] = {}  # webhook token -> {invoice_id, call_id}; read by webhooks.py
 PAGE_PATH = Path(__file__).with_name("phone.html")
+import hashlib as _hashlib
+PAGE_VERSION = _hashlib.sha1(PAGE_PATH.read_bytes()).hexdigest()[:10]  # open pages reload when this changes
+CLASSIFIERS: list = []  # main.py may register async (transcript_text, v) -> (outcome, summary)
 
 
 def digits(phone: str) -> str:
@@ -57,7 +62,7 @@ def _ring_timeout(key: str, call_id: str) -> None:
 @router.get("/phone/{number}", response_class=HTMLResponse)
 def phone_page(number: str):
     html = PAGE_PATH.read_text(encoding="utf-8")
-    html = html.replace("__VAPI_PUBLIC_KEY__", os.environ.get("VAPI_PUBLIC_KEY", "")).replace("__NUMBER__", digits(number))
+    html = html.replace("__VAPI_PUBLIC_KEY__", os.environ.get("VAPI_PUBLIC_KEY", "")).replace("__NUMBER__", digits(number)).replace("__VERSION__", PAGE_VERSION)
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
@@ -65,9 +70,9 @@ def phone_page(number: str):
 def poll(number: str):
     e = RINGING.get(digits(number))
     if not e:
-        return {"ringing": False}
+        return {"ringing": False, "version": PAGE_VERSION}
     v = e["v"]
-    return {"ringing": True, "call_id": e["call_id"], "company_name": v["company_name"],
+    return {"ringing": True, "version": PAGE_VERSION, "call_id": e["call_id"], "company_name": v["company_name"],
             "vendor_name": v["vendor_name"], "invoice_number": v["invoice_number"], "amount_display": v["amount_display"]}
 
 
@@ -109,6 +114,49 @@ async def phone_live(number: str, body: dict):
         "text": str(body.get("text") or "")[:1000], "final": bool(body.get("final")),
     })
     return {"ok": True}
+
+
+def _heuristic(text: str) -> tuple[str, str]:
+    said = " ".join(l.split(":", 1)[1] for l in text.splitlines() if l.startswith("VENDOR:")).lower()
+    if not said.strip():
+        return "no_answer", "The vendor did not say anything on the call."
+    if any(w in said for w in ("didn't", "did not", "not us", "never", "haven't", "no we", "no,", "nope", "fraud")) or said.strip().startswith("no"):
+        return "denied", "Vendor said they did not request the bank change."
+    if any(w in said for w in ("yes", "yeah", "correct", "that's right", "we did", "we changed", "switched")):
+        return "confirmed", "Vendor confirmed they requested the bank change."
+    return "unclear", "The vendor's answer was unclear."
+
+
+@router.post("/phone/{number}/ended")
+async def phone_ended(number: str, request: Request):
+    """The vendor's phone reports the call ended, with the full transcript. Decide the outcome now."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    call_id = body.get("call_id")
+    with _lock:
+        e = ANSWERED.pop(call_id, None) if call_id else None
+        for token, w in list(WEB_CALLS.items()):
+            if w.get("call_id") == call_id:
+                WEB_CALLS.pop(token, None)  # the provider webhook becomes a no-op for this call
+    if not e:
+        return {"ok": False}
+    lines = [x for x in body.get("transcript") or [] if isinstance(x, dict) and x.get("text")]
+    text = "\n".join(f"{'AGENT' if x.get('role') == 'assistant' else 'VENDOR'}: {str(x['text'])[:500]}" for x in lines)
+    outcome, summary = _heuristic(text)
+    for classify in CLASSIFIERS:
+        try:
+            outcome, summary = await classify(text, e["v"])
+            break
+        except Exception as exc:
+            print(f"[phone] classifier failed, using keywords: {exc}", flush=True)
+    invoice_id = int(e["v"]["invoice_id"])
+    await publish_live({"invoice_id": invoice_id, "call_id": call_id, "event": "ended", "role": None,
+                        "text": summary, "final": True, "outcome": outcome})
+    await asyncio.to_thread(post_result_sync, {"invoice_id": invoice_id, "provider_call_id": call_id,
+                                               "outcome": outcome, "summary": summary, "transcript": text})
+    return {"ok": True, "outcome": outcome}
 
 
 @router.post("/phone/{number}/log")

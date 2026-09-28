@@ -57,6 +57,8 @@ hub = Hub(); queue = CallQueue(hub);
 async def _call_live(event):  # live transcript / call start -> every board
     await hub.send({"type": "call.live", **event})
 _web_phone.LIVE_HOOKS.append(_call_live)
+from .agents.call_judge import classify as _classify_call
+_web_phone.CLASSIFIERS.append(_classify_call)
 payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
 from .slack_socket import SlackSocket

@@ -375,7 +375,7 @@ function Drawer({ inv, onClose, onApprove, onReject }) {
             <motion.section variants={item}>
               <h3>Payment</h3>
               <dl className="fields">
-                <dt>Status</dt><dd className={`pay-${inv.payment.status}`}>{inv.payment.status}</dd>
+                <dt>Status</dt><dd className={`pay-${inv.payment.status}`}>{inv.payment.error_code === "demo_settled" ? "demo settlement · Link payment still running" : inv.payment.status}</dd>
                 <dt>Paid by</dt><dd>{inv.payment.provider === "brainbase" ? "Brainbase payer agent (Link wallet)" : inv.payment.provider ?? "—"}</dd>
                 {inv.payment.charged_cents != null && inv.payment.charged_cents !== inv.payment.amount_cents && (
                   <><dt>Demo charge</dt><dd className="muted">{usd(inv.payment.charged_cents)} actually charged for this demo</dd></>
@@ -603,6 +603,9 @@ export default function App() {
         setLiveCall((c) => {
           if (!c || c.invoiceId !== ev.invoice_id) return c;
           if (ev.event === "started") return { ...c, state: "live" };
+          if (ev.event === "ended")
+            return { ...c, state: ev.outcome === "denied" ? "denied" : ev.outcome === "confirmed" ? "confirmed" : "ended",
+                     lines: c.lines.map((l) => ({ ...l, partial: false })) };
           if (ev.event !== "transcript" || !ev.text) return c;
           const lines = [...c.lines];
           const last = lines[lines.length - 1];

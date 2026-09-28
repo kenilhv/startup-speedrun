@@ -99,7 +99,7 @@ class CallQueueTests(OfflineTestCase):
 
     def test_kenil_routes_are_mounted(self):
         client = self.client()
-        self.assertEqual(client.get("/phone/15550100001/poll").json(), {"ringing": False})
+        self.assertFalse(client.get("/phone/15550100001/poll").json()["ringing"])
         self.assertIn("text/html", client.get("/phone/15550100001").headers["content-type"])
 
     def test_restart_recovers_interrupted_calls(self):
@@ -110,3 +110,34 @@ class CallQueueTests(OfflineTestCase):
         self.client()  # startup runs recovery
         invoice = self.wait(invoice_id, {"awaiting_approval"})
         self.assertEqual(invoice["call"]["attempt"], 2)
+
+
+class PhoneEndedTests(OfflineTestCase):
+    """The vendor's phone page reports the end of a web call with its transcript."""
+
+    def setUp(self):
+        super().setUp()
+        self.patch("backend.main.UPLOADS", self.root)
+
+    def test_hangup_with_transcript_settles_the_call(self):
+        from fastapi.testclient import TestClient
+        from backend.main import app, queue
+        from backend.calling import web_phone
+        self.patch("backend.calling.web_phone.CLASSIFIERS", [])  # keyword fallback, no Claude
+        posted = []
+        self.patch("backend.calling.web_phone.post_result_sync", side_effect=lambda r: posted.append(r))
+        with TestClient(app) as client:
+            web_phone.ANSWERED["web_9_x"] = {"call_id": "web_9_x", "token": "t", "v": {"invoice_id": "9"}}
+            r = client.post("/phone/15550100001/ended", json={"call_id": "web_9_x", "transcript": [
+                {"role": "assistant", "text": "Did your team request that change?"},
+                {"role": "user", "text": "No, we didn't change anything."}]})
+            self.assertEqual(r.json(), {"ok": True, "outcome": "denied"})
+            self.assertEqual(posted[0]["outcome"], "denied")
+            self.assertIn("VENDOR: No, we didn't", posted[0]["transcript"])
+            self.assertEqual(client.post("/phone/15550100001/ended", json={"call_id": "web_9_x"}).json(), {"ok": False})
+
+    def test_keyword_fallback(self):
+        from backend.calling.web_phone import _heuristic
+        self.assertEqual(_heuristic("AGENT: ok?\nVENDOR: Yes we switched banks")[0], "confirmed")
+        self.assertEqual(_heuristic("AGENT: ok?\nVENDOR: nope that's not us")[0], "denied")
+        self.assertEqual(_heuristic("AGENT: hello?")[0], "no_answer")

@@ -267,3 +267,36 @@ class BrainbasePayerApiTests(BrainbasePayerTests):
                 time.sleep(0.03)
             self.assertEqual(db.get_invoice(invoice_id)["status"], "settled")
             self.assertEqual(client.post(f"/invoices/{invoice_id}/approve").status_code, 409)
+
+
+class DemoSettleTests(OfflineTestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(patch.dict(os.environ, {**ENABLED, "BRAINBASE_DEMO_SETTLE_SECONDS": "15"}))
+        with db.connect() as c:
+            c.execute("UPDATE vendors SET payment_url=? WHERE name='OfficeSupplyCo'", (URL,))
+        self.bb = FakeBrainbase()
+        self.patch("backend.brainbase_payer._http", side_effect=self.bb)
+
+    def test_paying_shows_paid_after_delay_and_real_receipt_still_lands(self):
+        invoice_id = self.invoice()
+        payments.pay(invoice_id)
+        workflow.transition(invoice_id, "paying")
+        self.assertEqual(brainbase_payer.demo_auto_settle(), [])
+        [o] = brainbase_payer.demo_auto_settle(now=time.time() + 16)
+        invoice = db.get_invoice(invoice_id)
+        self.assertEqual((invoice["status"], invoice["payment"]["status"], invoice["payment"]["error_code"]), ("settled", "pending", "demo_settled"))
+        self.assertIn("demo settlement", o.message)
+        db.clear_demo()  # reset allowed in demo mode
+
+    def test_real_receipt_after_demo_settlement_records_paid(self):
+        invoice_id = self.invoice()
+        payments.pay(invoice_id)
+        workflow.transition(invoice_id, "paying")
+        brainbase_payer.demo_auto_settle(now=time.time() + 16)
+        key = self.payment(invoice_id)["idempotency_key"]
+        self.bb.finish({"paycrew_payment_ref": key, "status": "paid", "amount_cents": 100, "currency": "usd",
+                        "merchant_url": URL, "order_id": "cs_live_1"})
+        brainbase_payer.poll_once()
+        payment = db.get_invoice(invoice_id)["payment"]
+        self.assertEqual((payment["status"], payment["order_id"], payment["error_code"]), ("paid", "cs_live_1", None))
