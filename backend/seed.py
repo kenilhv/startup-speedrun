@@ -128,6 +128,9 @@ if __name__ == "__main__":
     parser.add_argument("--accounts-only", action="store_true", help="Provision accounts without funding")
     parser.add_argument("--check", action="store_true", help="Read the sandbox balance without creating Stripe objects")
     parser.add_argument("--reconcile", type=int, metavar="INVOICE_ID", help="Retry an unresolved transfer with its original request key")
+    parser.add_argument("--resolve", type=int, metavar="INVOICE_ID", help="Record a human-checked outcome for a stuck Brainbase payment")
+    parser.add_argument("--paid", metavar="ORDER_ID", help="with --resolve: the order/receipt id you saw in Link")
+    parser.add_argument("--failed", metavar="REASON", help="with --resolve: you confirmed nothing was charged")
     args = parser.parse_args()
     seed()
     try:
@@ -135,6 +138,9 @@ if __name__ == "__main__":
             print(json.dumps(provision_stripe(args.accounts_only), indent=2))
         if args.check:
             print(json.dumps(stripe_status(test_client()), indent=2))
+        if args.resolve:
+            from .brainbase_payer import resolve_manually
+            print(resolve_manually(args.resolve, paid_order_id=args.paid, failed_reason=args.failed))
         if args.reconcile:
             from .payments import pay
             with db.connect() as c:

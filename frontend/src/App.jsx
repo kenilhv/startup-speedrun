@@ -487,7 +487,7 @@ export default function App() {
       if (inv.status === "settled") {
         setTimeout(() => paidBurst(el()), 350);
         toast(`💸 Paid ${inv.vendor_name_raw} ${usd(inv.amount_cents)}`, "ok");
-        if (prev === "awaiting_approval") bigWin();
+        if (["high", "critical"].includes(inv.risk_level)) bigWin(); // an owner-approved payment
       } else if (inv.status === "blocked") {
         setTimeout(() => fraudBurst(el()), 350);
         setFlash({ id: Math.random(), kind: "red" });

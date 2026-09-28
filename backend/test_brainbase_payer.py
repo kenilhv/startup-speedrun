@@ -175,6 +175,24 @@ class BrainbasePayerTests(OfflineTestCase):
             payments.pay(invoice_id, "owner")
         self.assertEqual(len(self.bb.posts), 1)
 
+    def test_conflict_on_post_is_unknown_not_failed(self):
+        self.patch("backend.brainbase_payer._http", return_value=response(409, {"detail": "exists"}))
+        invoice_id = self.invoice()
+        with self.assertRaisesRegex(payments.PaymentError, "may already be running"):
+            payments.pay(invoice_id)
+        self.assertEqual(self.payment(invoice_id)["status"], "unknown")
+
+    def test_manual_resolution_unblocks_reset(self):
+        invoice_id, _ = self.dispatch()
+        with db.connect() as c:
+            c.execute("UPDATE payments SET status='unknown'")
+        with self.assertRaises(ValueError):
+            db.clear_demo()
+        brainbase_payer.resolve_manually(invoice_id, paid_order_id="ord_seen_in_link")
+        self.assertEqual(db.get_invoice(invoice_id)["status"], "settled")
+        self.assertEqual(db.get_invoice(invoice_id)["payment"]["order_id"], "ord_seen_in_link")
+        db.clear_demo()
+
     def test_refused_post_is_failed(self):
         self.patch("backend.brainbase_payer._http", return_value=response(403, {"detail": "no"}))
         invoice_id = self.invoice()

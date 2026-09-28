@@ -211,7 +211,11 @@ def request_payment(invoice_id: int, approved_by: str | None = None) -> Dispatch
         _mark(key, "unknown", type(exc).__name__)
         raise PayerAmbiguous(f"Could not confirm the Brainbase payment task was created (ref {key}); "
                              "check Brainbase before approving again") from exc
-    if response.status_code in (400, 401, 403, 404, 409, 422):
+    if response.status_code == 409:  # may mean a task with this key already exists and is running
+        _mark(key, "unknown", "http_409")
+        raise PayerAmbiguous(f"Brainbase reported a conflict for payment ref {key}; a payment task may already be "
+                             "running. Check Brainbase before approving again")
+    if response.status_code in (400, 401, 403, 404, 422):
         _mark(key, "failed", f"http_{response.status_code}")
         raise PayerRejected(f"Brainbase refused the payment task (HTTP {response.status_code}); no payment was started")
     task = {}
@@ -311,6 +315,28 @@ def _settle(payment, report, order_id):
                              (payment["invoice_id"], message)).lastrowid
         event = dict(c.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone())
     return Outcome(payment["invoice_id"], "settled", message, event, order_id)
+
+
+def resolve_manually(invoice_id, *, paid_order_id=None, failed_reason=None, actor="operator"):
+    """Record a human-checked outcome for a stuck Brainbase payment (pending/unknown). Never contacts Brainbase."""
+    if bool(paid_order_id) == bool(failed_reason):
+        raise ValueError("Give exactly one of paid_order_id or failed_reason")
+    with db.connect() as c:
+        c.execute("BEGIN IMMEDIATE")
+        payment = c.execute("SELECT * FROM payments WHERE invoice_id=? AND provider='brainbase'", (invoice_id,)).fetchone()
+        if not payment or payment["status"] not in {"pending", "unknown"}:
+            raise ValueError("No unresolved Brainbase payment for this invoice")
+        if paid_order_id:
+            c.execute("UPDATE payments SET status='paid',result_json=?,lease_until=0 WHERE id=?",
+                      (json.dumps({"order_id": paid_order_id, "resolved_by": actor}), payment["id"]))
+            c.execute("UPDATE invoices SET status='settled',updated_at=CURRENT_TIMESTAMP WHERE id=?", (invoice_id,))
+            message = f"{actor} confirmed payment in Link (order {paid_order_id})"
+        else:
+            c.execute("UPDATE payments SET status='failed',error_code='manual',lease_until=0 WHERE id=?", (payment["id"],))
+            c.execute("UPDATE invoices SET status='escalated',updated_at=CURRENT_TIMESTAMP WHERE id=?", (invoice_id,))
+            message = f"{actor} confirmed no payment was made: {failed_reason}"
+        c.execute("INSERT INTO events(invoice_id,type,message) VALUES (?,'payment.resolved',?)", (invoice_id, message))
+    return message
 
 
 def _get_json(path, params=None):
