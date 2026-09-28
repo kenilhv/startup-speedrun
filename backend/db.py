@@ -33,7 +33,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, invoice_id INTEGER UNIQUE NOT NULL, stripe_transfer_id TEXT, amount_cents INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, invoice_id INTEGER, type TEXT DEFAULT 'activity', message TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         """)
-        _ensure_columns(c, "vendors", {"email":"TEXT", "payment_url":"TEXT"})
+        _ensure_columns(c, "vendors", {"email":"TEXT", "payment_url":"TEXT", "checkout_merchant":"TEXT"})
         _ensure_columns(c, "invoices", {"vendor_name_raw":"TEXT", "currency":"TEXT DEFAULT 'usd'", "due_date":"TEXT", "bank_last4_claimed":"TEXT", "source":"TEXT DEFAULT 'upload'"})
         _ensure_columns(c, "calls", {"status":"TEXT DEFAULT 'queued'", "transcript":"TEXT", "started_at":"TEXT", "ended_at":"TEXT"})
         _ensure_columns(c, "payments", {"stripe_transfer_id":"TEXT"})

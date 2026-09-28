@@ -91,6 +91,20 @@ class BrainbasePayerTests(OfflineTestCase):
         row = self.payment(invoice_id)
         self.assertEqual((row["provider"], row["provider_ref"], row["status"]), ("brainbase", "task-1", "pending"))
 
+    def test_expected_checkout_seller_is_in_the_request(self):
+        with db.connect() as c:
+            c.execute("UPDATE vendors SET checkout_merchant='shresth' WHERE name='OfficeSupplyCo'")
+        payments.pay(self.invoice())
+        self.assertIn('Seller name shown on that checkout page: "shresth"', self.bb.posts[0][0]["initial_messages"][0]["content"])
+
+    def test_seed_reads_url_and_seller_name(self):
+        from .seed import seed
+        value = '{"OfficeSupplyCo": {"url": "https://buy.stripe.com/x", "merchant_name": "shresth"}, "PaperWorks Ltd": "https://buy.stripe.com/y", "Nope": "https://z"}'
+        with patch.dict(os.environ, {"VENDOR_PAYMENT_URLS": value}):
+            seed()
+        self.assertEqual(db.find_vendor("OfficeSupplyCo")["checkout_merchant"], "shresth")
+        self.assertEqual(db.find_vendor("PaperWorks Ltd")["payment_url"], "https://buy.stripe.com/y")
+
     def test_refusals_never_contact_brainbase(self):
         cases = [dict(amount_cents=500000), dict(currency="eur"), dict(bank_last4_claimed="9999"),
                  dict(status="flagged"), dict(risk_level="critical")]
@@ -119,7 +133,7 @@ class BrainbasePayerTests(OfflineTestCase):
 
     def test_mismatched_reports_never_settle(self):
         bad = [dict(amount_cents=999), dict(currency="eur"), dict(merchant_url="https://evil.example/pay"),
-               dict(order_id=""), dict(paycrew_payment_ref="paycrew-bb-other"), dict(status="processing")]
+               dict(order_id=""), dict(paycrew_payment_ref="PAYCREW-0-OTHER1"), dict(status="processing")]
         for change in bad:
             with self.subTest(change=change):
                 with db.connect() as c:
