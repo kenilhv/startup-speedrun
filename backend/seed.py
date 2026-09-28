@@ -20,6 +20,10 @@ PURCHASE_ORDERS = [
     ("PO-1002", "PaperWorks Ltd", 35000, "Custom letterhead printing"),
     ("PO-1003", "TechSoftware Inc", 120000, "Annual software licenses"),
     ("PO-1005", "FastConsult LLC", 450000, "Finance process consulting"),
+    ("PO-1006", "OfficeSupplyCo", 26500, "Breakroom and cleaning supplies"),
+    ("PO-1007", "PaperWorks Ltd", 12000, "Business cards, 5 employees"),
+    ("PO-1008", "TechSoftware Inc", 240000, "Security add-on, annual"),
+    ("PO-1009", "FastConsult LLC", 180000, "Month-end close support"),
 ]
 
 def seed():

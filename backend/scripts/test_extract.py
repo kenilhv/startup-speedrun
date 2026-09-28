@@ -23,7 +23,9 @@ for number, (vendor, cents, last4) in EXPECTED.items():
     got = extract_invoice((ROOT / "demo_invoices" / f"{number}.pdf").read_bytes())
     want = {"vendor_name": vendor, "invoice_number": number, "amount_cents": cents,
             "currency": "usd", "bank_last4": last4}
-    bad = {k: (got.get(k), v) for k, v in want.items() if got.get(k) != v}
+    import re
+    norm = lambda n: re.sub(r"\b(inc|llc|ltd)\b\.?", "", (n or "").lower()).strip()  # same as db.find_vendor
+    bad = {k: (got.get(k), v) for k, v in want.items() if (norm(got.get(k)) != norm(v) if k == "vendor_name" else got.get(k) != v)}
     if "error" in got:
         bad["error"] = got["error"]
     if set(got) != set(KEYS) and "error" not in got:

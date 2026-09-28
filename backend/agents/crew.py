@@ -199,6 +199,7 @@ class Crew:
 
         facts = self._facts(fields, vendor, po_finding, dup_finding)
         fraud_status, fraud_finding, fraud_engine = self._fraud_rules(fields, vendor)
+        claude_suspicious = False
         if use_claude:
             try:
                 report = await asyncio.to_thread(
@@ -207,6 +208,7 @@ class Crew:
                 top = sorted(report.signals, key=lambda s: ["high", "medium", "low"].index(s.severity))
                 fraud_finding = report.summary + (" Signals: " + "; ".join(s.text for s in top[:3]) if top else "")
                 fraud_status = "fail" if (report.suspicious or fraud_status == "fail") else ("warn" if top else "pass")
+                claude_suspicious = report.suspicious
                 fraud_engine = "Claude"
             except Exception as exc:
                 log.warning("Fraud Signal agent fell back to rules: %s", exc)
@@ -215,6 +217,9 @@ class Crew:
         # 5. Risk Scorer: rules decide, Claude explains
         await self.begin("risk_scorer")
         level, reasons = rules.score(fields, vendor)
+        if level == "low" and claude_suspicious:
+            # Claude may raise caution (phone verification), never lower it.
+            level, reasons = "high", [f"Fraud analyst: {fraud_finding[:180]}"]
         result.level, result.reasons = level, reasons
         explanation, engine = "; ".join(reasons), "rules"
         if use_claude:

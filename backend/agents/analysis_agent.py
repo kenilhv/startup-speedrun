@@ -144,7 +144,8 @@ def _search(pattern: str, text: str) -> Optional[str]:
 
 def _extract_with_regex(pdf_bytes: bytes) -> dict:
     text = _pdf_text(pdf_bytes)
-    first_line = next((l.strip() for l in text.splitlines() if l.strip()), None)
+    # first real line of the letterhead (skip logo initials like "CV")
+    first_line = next((l.strip() for l in text.splitlines() if len(l.strip()) >= 4 and any(ch.islower() for ch in l)), None)
     return _normalize({
         "vendor_name": _search(r"^\s*Vendor\s*:\s*([^\n]+)", text) or first_line,
         "invoice_number": _search(r"Invoice\s*(?:#|No\.?|Number)\s*:?\s*([A-Z0-9][A-Z0-9-]*)", text),

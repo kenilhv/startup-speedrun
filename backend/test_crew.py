@@ -62,6 +62,26 @@ class CrewTests(OfflineTestCase):
         self.assertEqual(trace["fraud_signal"]["engine"], "Claude")
         self.assertIn("call first", trace["risk_scorer"]["finding"])
 
+    def test_claude_can_raise_risk_to_phone_check(self):
+        def fake(content, schema, *a, **k):
+            if schema is crew.FraudReport:
+                return crew.FraudReport(suspicious=True, signals=[crew.Signal(severity="high", text="Asks for gift cards")],
+                                        summary="Requests payment in gift cards.")
+            return crew.RiskExplanation(explanation="Gift cards are a fraud sign.")
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-offline"}), \
+             patch("backend.agents.crew._claude", side_effect=fake), \
+             patch("backend.agents.analysis_agent._extract_with_claude", side_effect=RuntimeError("offline")):
+            _, result, _ = self.run_crew((PDF / "INV-441.pdf").read_bytes())
+        self.assertEqual((result.level, result.decision), ("high", "verify_by_phone"))
+        self.assertTrue(result.reasons[0].startswith("Fraud analyst:"))
+
+    def test_po_rules_flag_mismatch_and_foreign_po(self):
+        from backend import rules
+        vendor = db.find_vendor("PaperWorks Ltd")
+        self.assertEqual(rules.score({"id": 0, "bank_last4": "0022", "po_reference": "PO-1003", "amount_cents": 35000}, vendor)[0], "high")
+        self.assertEqual(rules.score({"id": 0, "bank_last4": "0022", "po_reference": "PO-1002", "amount_cents": 99900}, vendor)[0], "high")
+        self.assertEqual(rules.score({"id": 0, "bank_last4": "0022", "po_reference": "PO-1002", "amount_cents": 35000}, vendor)[0], "low")
+
     def test_claude_failure_falls_back_to_rules(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-offline"}), \
              patch("backend.agents.crew._claude", side_effect=TimeoutError("slow")), \
