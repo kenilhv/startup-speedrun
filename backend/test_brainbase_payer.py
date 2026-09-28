@@ -132,6 +132,10 @@ class BrainbasePayerTests(OfflineTestCase):
                 self.assertEqual(self.payment(invoice_id)["status"], "unknown")
                 self.assertEqual(db.get_invoice(invoice_id)["status"], "paying")
 
+    def test_stripe_payment_link_handoff_counts_as_same_merchant(self):
+        self.assertTrue(brainbase_payer._same_merchant("https://checkout.stripe.com/c/pay/cs_live_1", "https://buy.stripe.com/abc"))
+        self.assertFalse(brainbase_payer._same_merchant("https://checkout.evil.com/pay", "https://buy.stripe.com/abc"))
+
     def test_failed_task_or_report_is_failed_not_paid(self):
         invoice_id, _ = self.dispatch()
         self.bb.finish(None, status="fail")

@@ -26,5 +26,7 @@ End every run with exactly one JSON object on its own line, and nothing after it
 ```
 
 `status` is one of `"paid"`, `"failed"`, `"declined"`, `"unknown"`. Report `"paid"` only when the
-merchant showed a confirmation with an order or receipt id. The backend checks every field against
+merchant showed a confirmation with an order or receipt id. For Stripe checkouts, the checkout
+session id (starts with `cs_`) is often in the address bar after paying; use it as `order_id`.
+Copy `merchant_url` exactly from the request. The backend checks every field against
 the request and will not mark the invoice paid if anything differs.

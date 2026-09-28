@@ -18,3 +18,6 @@ htmlcov/
 # frontend
 node_modules/
 dist/
+
+# Brainbase pulls: generated MCP config may carry auth headers
+.mcp.json
