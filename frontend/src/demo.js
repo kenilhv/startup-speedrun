@@ -141,7 +141,7 @@ export async function runDemo({ sim, ui, wait }) {
     ui.phone({ who, number, lines: shown, state: "live" });
     for (const line of lines) {
       shown.push({ from: line[0], text: line[1], id: shown.length });
-      ui.phone({ who, number, lines: [...shown], state: "live", typing: line[0] });
+      ui.phone({ who, number, lines: [...shown], state: "live", typing: line[0], poweredBy: "Vapi voice agent" });
       await wait(900 + line[1].length * 32);
     }
     ui.phone({ who, number, lines: [...shown], state: outcome });

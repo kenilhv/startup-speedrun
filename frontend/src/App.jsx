@@ -362,6 +362,12 @@ function Drawer({ inv, onClose, onApprove, onReject }) {
                 )}
               </div>
               {inv.call.summary && <blockquote>{inv.call.summary}</blockquote>}
+              {inv.call.transcript && (
+                <details className="transcript-full">
+                  <summary>Full transcript</summary>
+                  <pre>{inv.call.transcript}</pre>
+                </details>
+              )}
             </motion.section>
           )}
 
@@ -515,6 +521,8 @@ export default function App() {
   const [slack, setSlack] = useState(null);
   const [fly, setFly] = useState(null);
   const [flows, setFlows] = useState([]); // recent status changes, animated on the workflow
+  const [liveCall, setLiveCall] = useState(null); // real vendor call shown in the phone panel
+  const liveHide = useRef(null);
 
   const toast = useCallback((text, kind = "info") => {
     const id = Math.random();
@@ -560,6 +568,22 @@ export default function App() {
       const prev = lastStatus.current[inv.id];
       lastStatus.current[inv.id] = inv.status;
       if (prev !== undefined) celebrate(inv, prev);
+      // real call lifecycle -> phone panel (the scripted demo drives its own)
+      if (prev !== undefined && prev !== inv.status && !demoToken.current) {
+        if (inv.status === "calling") {
+          clearTimeout(liveHide.current);
+          setLiveCall({ invoiceId: inv.id, who: inv.vendor?.name ?? inv.vendor_name_raw, number: inv.vendor?.phone_on_file,
+            lines: [], state: "ringing", poweredBy: "Vapi voice agent · live" });
+        } else if (prev === "calling") {
+          const outcome = inv.call?.outcome;
+          setLiveCall((c) => c && c.invoiceId === inv.id
+            ? { ...c, state: outcome === "denied" ? "denied" : outcome === "confirmed" ? "confirmed" : "ended",
+                lines: c.lines.map((l) => ({ ...l, partial: false })) }
+            : c);
+          clearTimeout(liveHide.current);
+          liveHide.current = setTimeout(() => setLiveCall(null), 6000);
+        }
+      }
       if (prev !== inv.status && (prev !== undefined || inv.status === "received")) {
         const flow = { id: Math.random(), from: prev, to: inv.status };
         setFlows((f) => [...f.slice(-20), flow]);
@@ -575,6 +599,17 @@ export default function App() {
       onInvoice: upsert,
       onActivity: (a) => setFeed((f) => [{ ...a, key: `${a.ts}-${Math.random()}` }, ...f].slice(0, 60)),
       onConnection: setConnected,
+      onCallLive: (ev) =>
+        setLiveCall((c) => {
+          if (!c || c.invoiceId !== ev.invoice_id) return c;
+          if (ev.event === "started") return { ...c, state: "live" };
+          if (ev.event !== "transcript" || !ev.text) return c;
+          const lines = [...c.lines];
+          const last = lines[lines.length - 1];
+          if (last && last.from === ev.role && last.partial) lines[lines.length - 1] = { ...last, text: ev.text, partial: !ev.final };
+          else lines.push({ id: `${Date.now()}-${lines.length}`, from: ev.role, text: ev.text, partial: !ev.final });
+          return { ...c, state: "live", lines };
+        }),
     };
     const c = createClient(handlers.current);
     client.current = c;
@@ -845,7 +880,7 @@ export default function App() {
       <ChapterBar chapters={CHAPTERS} active={demo === "running" ? chapter : -1} />
       <Caption caption={caption} />
       <FlyIn fly={fly} />
-      <PhoneOverlay phone={phone} />
+      <PhoneOverlay phone={phone ?? liveCall} />
       <SlackCard slack={slack} />
       <Splash splash={splash} />
       <Toasts toasts={toasts} />

@@ -111,6 +111,16 @@ async def vapi_webhook(request: Request, background: BackgroundTasks, token: str
     if not web:
         _check_secret(x_paycrew_secret)
     msg = (await request.json()).get("message") or {}
+    if msg.get("type") == "transcript" and not web:
+        # Real phone calls: stream the transcript to the board (web calls mirror it from the phone page).
+        call_id = (msg.get("call") or {}).get("id")
+        invoice_id = CALL_INVOICE.get(call_id)
+        if invoice_id is not None and msg.get("transcript"):
+            await web_phone.publish_live({
+                "invoice_id": int(invoice_id), "call_id": call_id, "event": "transcript",
+                "role": "agent" if msg.get("role") == "assistant" else "vendor",
+                "text": str(msg["transcript"])[:1000], "final": msg.get("transcriptType") == "final"})
+        return {"ok": True}
     if msg.get("type") == "end-of-call-report":
         if web:
             web_phone.ANSWERED.pop(web["call_id"], None)

@@ -13,7 +13,7 @@ async function json(res) {
   return text ? JSON.parse(text) : null;
 }
 
-function createHttpClient({ onInvoice, onActivity, onConnection }) {
+function createHttpClient({ onInvoice, onActivity, onConnection, onCallLive }) {
   let socket;
   let closed = false;
   let retry;
@@ -30,6 +30,7 @@ function createHttpClient({ onInvoice, onActivity, onConnection }) {
       }
       if (msg.type === "invoice.updated") onInvoice(msg.invoice);
       else if (msg.type === "invoices.snapshot") msg.invoices?.forEach(onInvoice); // sent on every (re)connect
+      else if (msg.type === "call.live") onCallLive?.(msg); // live transcript from the vendor call
       else if (msg.type === "activity") onActivity(msg);
     };
     socket.onclose = () => {

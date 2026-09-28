@@ -64,7 +64,7 @@ def _decode(data):
 
 INVOICE_SQL = """
 SELECT i.*, v.id vendor_id_join, v.name vendor_name, v.phone_on_file vendor_phone_on_file, v.bank_last4_on_file vendor_bank_last4_on_file,
- c.status call_status, c.outcome call_outcome, c.summary call_summary, c.attempt call_attempt,
+ c.status call_status, c.outcome call_outcome, c.summary call_summary, c.attempt call_attempt, c.transcript call_transcript,
  p.id payment_id, p.stripe_transfer_id payment_stripe_transfer_id, p.amount_cents payment_amount_cents, p.status payment_status,
  p.provider payment_provider, p.provider_ref payment_provider_ref, p.charged_cents payment_charged_cents, p.result_json payment_result_json, p.error_code payment_error_code
 FROM invoices i LEFT JOIN vendors v ON v.id=i.vendor_id
@@ -78,7 +78,7 @@ def invoice_object(row):
     vendor = {"id":data.pop("vendor_id_join"), "name":data.pop("vendor_name"), "phone_on_file":data.pop("vendor_phone_on_file"), "bank_last4_on_file":data.pop("vendor_bank_last4_on_file")}
     data["vendor"] = vendor if vendor["id"] else None
     data["bank_last4_on_file"] = vendor["bank_last4_on_file"] if vendor["id"] else None
-    call = {k:data.pop(f"call_{k}") for k in ("status","outcome","summary","attempt")}
+    call = {k:data.pop(f"call_{k}") for k in ("status","outcome","summary","attempt","transcript")}
     data["call"] = call if call["status"] else None
     payment_id = data.pop("payment_id")
     payment = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status"),

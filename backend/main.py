@@ -52,7 +52,12 @@ class Hub:
 pipeline_tasks = set()
 from .calling.webhooks import router as calling_router  # Kenil: /phone/<digits>, /webhooks/vapi, /webhooks/brainbase/*
 app.include_router(calling_router)
-hub = Hub(); queue = CallQueue(hub); payment_watcher = brainbase_payer.PaymentWatcher(hub)
+from .calling import web_phone as _web_phone
+hub = Hub(); queue = CallQueue(hub);
+async def _call_live(event):  # live transcript / call start -> every board
+    await hub.send({"type": "call.live", **event})
+_web_phone.LIVE_HOOKS.append(_call_live)
+payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
 from .slack_socket import SlackSocket
 slack_socket = SlackSocket(lambda invoice_id, approved, actor: decide(invoice_id, approved, actor))

@@ -134,6 +134,7 @@ export function PhoneOverlay({ phone }) {
               {live && <span className="live-call"><span className="rec" /> Live · <Elapsed running /></span>}
               {phone.state === "denied" && <span className="verdict bad">Vendor denied the change</span>}
               {phone.state === "confirmed" && <span className="verdict ok">Vendor confirmed</span>}
+              {phone.state === "ended" && <span className="verdict">Call ended</span>}
             </div>
           </div>
           <div className="transcript" ref={scroller}>
@@ -147,7 +148,8 @@ export function PhoneOverlay({ phone }) {
                   transition={spring}
                 >
                   <div className="bubble-from">{l.from === "agent" ? "PayCrew agent" : phone.who}</div>
-                  {i === phone.lines.length - 1 && live ? <Typed text={l.text} /> : l.text}
+                  {phone.typing && i === phone.lines.length - 1 && live ? <Typed text={l.text} /> : l.text}
+                  {l.partial && <span className="caret" />}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -158,7 +160,7 @@ export function PhoneOverlay({ phone }) {
                 <i key={i} style={{ animationDelay: `${(i % 7) * 0.08}s`, animationPlayState: live ? "running" : "paused" }} />
               ))}
             </span>
-            <span className="powered">Brainbase voice agent</span>
+            <span className="powered">{phone.poweredBy ?? "PayCrew voice agent"}</span>
           </div>
         </motion.div>
       )}

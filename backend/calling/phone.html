@@ -260,13 +260,27 @@ function setCaption(role, text) {
   el.append(s, document.createTextNode(text));
 }
 
+// Mirror the live transcript to the PayCrew board (partials throttled, finals always sent).
+const lastSent = {};
+function liveTranscript(role, text, final) {
+  if (!current) return;
+  const now = Date.now();
+  if (!final && now - (lastSent[role] || 0) < 250) return;
+  lastSent[role] = now;
+  post("live", { call_id: current.call_id, event: "transcript", role, text, final }).catch(() => {});
+}
+
 function wireVapi() {
   vapi.on("message", (m) => {
-    if (m?.type === "transcript" && m.transcript) setCaption(m.role, m.transcript);
+    if (m?.type === "transcript" && m.transcript) {
+      setCaption(m.role, m.transcript);
+      liveTranscript(m.role, m.transcript, m.transcriptType === "final");
+    }
   });
   vapi.on("volume-level", (v) => { if (v > maxLevel) maxLevel = v; });
   vapi.on("call-start", () => {
     callStarted = true; callStartAt = Date.now();
+    if (current) post("live", { call_id: current.call_id, event: "started" }).catch(() => {});
     setTalk("Connected", false);
     rlog("call-start", {});
     setTimeout(() => checkAudio("audio-after-2s"), 2000);

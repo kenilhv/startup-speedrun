@@ -587,3 +587,10 @@ blockquote { margin: 10px 0 0; padding: 12px 14px; border-left: 3px solid var(--
 .wf-pop-last { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .wf-pop-last span { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .wf-pop-last p { margin: 2px 0 0; font-size: 12px; line-height: 1.4; }
+
+/* live call transcript */
+.caret { display: inline-block; width: 7px; height: 13px; margin-left: 3px; vertical-align: -2px; background: currentColor; opacity: .55; animation: blink .8s steps(2) infinite; }
+.verdict { background: var(--panel-2); color: var(--muted); }
+.transcript-full { margin-top: 8px; }
+.transcript-full summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--green-deep); }
+.transcript-full pre { white-space: pre-wrap; font: 12px/1.5 var(--mono); background: var(--panel-2); padding: 10px; border-radius: 10px; max-height: 220px; overflow: auto; }

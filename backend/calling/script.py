@@ -98,7 +98,7 @@ def vapi_assistant(v: dict, server: dict) -> dict:
         "voice": {"provider": "vapi", "voiceId": os.environ.get("VAPI_VOICE_ID", "Elliot")},
         "maxDurationSeconds": 90,
         "server": server,
-        "serverMessages": ["end-of-call-report"],
+        "serverMessages": ["end-of-call-report", "transcript"],
         "analysisPlan": {"structuredDataPlan": {"enabled": True, "schema": ANALYSIS_SCHEMA}},
         "metadata": {"invoice_id": v["invoice_id"]},
     }

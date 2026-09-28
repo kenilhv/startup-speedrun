@@ -83,6 +83,34 @@ def answer(number: str, body: dict):
     return {"assistant": vapi_assistant(e["v"], {"url": f"{base}/webhooks/vapi?token={e['token']}"})}
 
 
+# Live call events for the board: main.py registers an async hook (event dict) here.
+LIVE_HOOKS: list = []
+
+
+async def publish_live(event: dict) -> None:
+    for hook in LIVE_HOOKS:
+        try:
+            await hook(event)
+        except Exception as exc:
+            print(f"[phone] live hook failed: {exc}", flush=True)
+
+
+@router.post("/phone/{number}/live")
+async def phone_live(number: str, body: dict):
+    """Transcript lines and call start, mirrored from the vendor's phone page."""
+    call_id = body.get("call_id")
+    with _lock:
+        e = ANSWERED.get(call_id) if call_id else None
+    if not e:
+        return {"ok": False}
+    await publish_live({
+        "invoice_id": int(e["v"]["invoice_id"]), "call_id": call_id, "event": body.get("event", "transcript"),
+        "role": "agent" if body.get("role") == "assistant" else "vendor",
+        "text": str(body.get("text") or "")[:1000], "final": bool(body.get("final")),
+    })
+    return {"ok": True}
+
+
 @router.post("/phone/{number}/log")
 def phone_log(number: str, body: dict):
     print(f"[phone {digits(number)[-4:]}] {body.get('event')}: {body.get('detail')}", flush=True)
