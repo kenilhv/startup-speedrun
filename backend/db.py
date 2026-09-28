@@ -7,9 +7,17 @@ DB_PATH = Path(__file__).with_name("paycrew.db")
 
 @contextmanager
 def connect():
-    conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
-    try: yield conn; conn.commit()
-    finally: conn.close()
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=15000")
+    try:
+        yield conn
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def _ensure_columns(conn, table, columns):
     existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
@@ -29,7 +37,22 @@ def init_db():
         _ensure_columns(c, "invoices", {"vendor_name_raw":"TEXT", "currency":"TEXT DEFAULT 'usd'", "due_date":"TEXT", "bank_last4_claimed":"TEXT", "source":"TEXT DEFAULT 'upload'"})
         _ensure_columns(c, "calls", {"status":"TEXT DEFAULT 'queued'", "transcript":"TEXT", "started_at":"TEXT", "ended_at":"TEXT"})
         _ensure_columns(c, "payments", {"stripe_transfer_id":"TEXT"})
+        _ensure_columns(c, "payments", {
+            "idempotency_key": "TEXT", "request_json": "TEXT",
+            "started_at": "REAL", "lease_until": "REAL DEFAULT 0",
+            "error_code": "TEXT", "approved_by": "TEXT",
+        })
         _ensure_columns(c, "events", {"type":"TEXT DEFAULT 'activity'"})
+        c.executescript("""
+        CREATE UNIQUE INDEX IF NOT EXISTS payment_request_key ON payments(idempotency_key);
+        CREATE TABLE IF NOT EXISTS stripe_events (
+            id TEXT PRIMARY KEY, type TEXT NOT NULL, received_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS stripe_setup (
+            name TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE NOT NULL,
+            request_json TEXT NOT NULL, object_id TEXT, started_at REAL NOT NULL
+        );
+        """)
 
 def _decode(data):
     for key in ("risk_reasons", "fields_json"):
@@ -54,7 +77,8 @@ def invoice_object(row):
     call = {k:data.pop(f"call_{k}") for k in ("status","outcome","summary","attempt")}
     data["call"] = call if call["status"] else None
     payment_id = data.pop("payment_id")
-    data["payment"] = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status")} if payment_id else None
+    payment = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status")}
+    data["payment"] = payment if payment_id else None
     return data
 
 def get_invoice(invoice_id):
@@ -86,4 +110,8 @@ def add_event(invoice_id, message, event_type="activity"):
     with connect() as c: c.execute("INSERT INTO events(invoice_id,type,message) VALUES (?,?,?)", (invoice_id, event_type, message))
 def clear_demo():
     with connect() as c:
-        for table in ("invoices", "calls", "payments", "events"): c.execute(f"DELETE FROM {table}")
+        c.execute("BEGIN IMMEDIATE")
+        if c.execute("SELECT 1 FROM payments WHERE status IN ('pending','unknown') LIMIT 1").fetchone():
+            raise ValueError("Cannot reset while a Stripe payment is unresolved")
+        for table in ("calls", "payments", "events", "invoices"):
+            c.execute(f"DELETE FROM {table}")

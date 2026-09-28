@@ -1,25 +1,20 @@
-"""Run: py -m unittest backend.test_api"""
+"""In-process API checks; every provider is mocked and network access is blocked."""
 import os
-import tempfile
 import time
 import unittest
-from pathlib import Path
 
-os.environ["MOCK_CALLS"] = "true"
 from fastapi.testclient import TestClient
 from backend import db
+from backend.test_support import OfflineTestCase
 
-class PayCrewApiTests(unittest.TestCase):
+class PayCrewApiTests(OfflineTestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        db.DB_PATH = Path(self.tmp.name) / "paycrew.db"
+        super().setUp()
         from backend.main import app
+        self.patch("backend.main.UPLOADS", self.root)
         self.client = TestClient(app)
         self.client.__enter__()
-
-    def tearDown(self):
-        self.client.__exit__(None, None, None)
-        self.tmp.cleanup()
+        self.addCleanup(self.client.__exit__, None, None, None)
 
     def test_seeds_contract_vendors(self):
         vendors = self.client.get("/vendors").json()
@@ -33,6 +28,25 @@ class PayCrewApiTests(unittest.TestCase):
         with db.connect() as c:
             invoice_id = c.execute("INSERT INTO invoices(filename,pdf_path,status,amount_cents) VALUES (?,?,?,?)", ("a.pdf", "a.pdf", "received", 100)).lastrowid
         self.assertEqual(self.client.post(f"/invoices/{invoice_id}/approve").status_code, 409)
+
+    def test_default_brainbase_route_never_dispatches_a_payment(self):
+        from backend.stripe_gateway import test_client
+        self.patch("backend.payments.test_client", test_client)
+        invoice_id = self.invoice(status="awaiting_approval")
+        response = self.client.post(f"/invoices/{invoice_id}/approve")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Brainbase + Link", response.json()["detail"])
+        self.assertEqual(db.get_invoice(invoice_id)["status"], "awaiting_approval")
+        self.assertIsNone(self.payment(invoice_id))
+        self.create_transfer.assert_not_called()
+
+    def test_default_brainbase_upload_escalates_instead_of_claiming_payment(self):
+        from backend.stripe_gateway import test_client
+        self.patch("backend.payments.test_client", test_client)
+        invoice_id = self._upload("Vendor: OfficeSupplyCo\nInvoice Number: OFFLINE-PENDING\nTotal: $10.00\nBank: 0011")
+        invoice = self._wait_for(invoice_id, {"escalated"})
+        self.assertIsNone(invoice["payment"])
+        self.create_transfer.assert_not_called()
 
     def _upload(self, body):
         response = self.client.post("/invoices/upload", files=[("files", ("invoice.pdf", body.encode(), "application/pdf"))])

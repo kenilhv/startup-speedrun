@@ -1,11 +1,12 @@
-import json, logging, os, secrets, shutil
+import asyncio, json, logging, os, secrets, shutil
 from urllib.parse import parse_qs
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from . import db, pipeline, workflow
+from . import db, pipeline, workflow, payments
+from .stripe_gateway import StripeConfigurationError
 from .models import CallResult
 from .call_queue import CallQueue
 from .seed import seed
@@ -23,6 +24,11 @@ class Hub:
             try: await ws.send_json(payload)
             except Exception: self.clients.discard(ws)
     async def invoice(self, invoice): await self.send({"type":"invoice.updated", "invoice": invoice})
+    async def payment(self, receipt):
+        await self.invoice(db.get_invoice(receipt.invoice_id))
+        if receipt.activity:
+            await self.send({"type": "activity", "invoice_id": receipt.invoice_id,
+                             "message": receipt.activity["message"], "ts": receipt.activity["created_at"]})
     async def status(self, invoice_id, status, message):
         invoice = workflow.transition(invoice_id, status); db.add_event(invoice_id, message)
         await self.invoice(invoice); await self.send({"type":"activity", "invoice_id":invoice_id, "message":message, "ts":datetime.now(timezone.utc).isoformat()})
@@ -74,13 +80,25 @@ async def upload(background_tasks: BackgroundTasks, files: list[UploadFile] = Fi
 async def decide(invoice_id: int, approved: bool, actor="dashboard"):
     invoice = db.get_invoice(invoice_id)
     if not invoice: raise HTTPException(404, "Invoice not found")
+    if approved and invoice["status"] == "settled" and invoice.get("payment"):
+        if (invoice["payment"].get("stripe_transfer_id") or "").startswith("tr_"):
+            return invoice
     if invoice["status"] != "awaiting_approval": raise HTTPException(409, "Invoice is not awaiting approval")
     if approved:
-        from .payments import pay
-        try: pay(invoice)
-        except Exception as exc: raise HTTPException(502, "Payment provider failed; invoice remains awaiting approval") from exc
-        await hub.status(invoice_id, "settled", f"Approved by {actor}, paid via Stripe")
-    else: await hub.status(invoice_id, "blocked", f"Rejected by {actor}")
+        try:
+            receipt = await asyncio.to_thread(payments.pay, invoice_id, actor)
+        except StripeConfigurationError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except payments.PaymentConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except payments.PaymentError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        await hub.payment(receipt)
+    else:
+        try:
+            await hub.status(invoice_id, "blocked", f"Rejected by {actor}")
+        except workflow.InvalidTransition as exc:
+            raise HTTPException(409, str(exc)) from exc
     return db.get_invoice(invoice_id)
 
 @app.post("/invoices/{invoice_id}/approve")
@@ -121,17 +139,27 @@ async def stripe_webhook(request: Request):
     secret = os.getenv("STRIPE_WEBHOOK_SECRET")
     if not secret: raise HTTPException(503, "Stripe webhook is not configured")
     import stripe
-    try: event = stripe.Webhook.construct_event(body, signature, secret)
-    except Exception as exc: raise HTTPException(400, "Invalid Stripe webhook") from exc
-    if event["type"] == "transfer.created":
-        transfer = event["data"]["object"]; invoice_id = transfer.get("metadata", {}).get("invoice_id")
-        if invoice_id:
-            with db.connect() as c: c.execute("UPDATE payments SET status='paid' WHERE invoice_id=?", (int(invoice_id),))
-            await hub.invoice(db.get_invoice(int(invoice_id)))
+    if not signature:
+        raise HTTPException(400, "Missing Stripe signature")
+    try:
+        event = stripe.Webhook.construct_event(body, signature, secret)
+    except (ValueError, stripe.SignatureVerificationError) as exc:
+        raise HTTPException(400, "Invalid Stripe webhook") from exc
+    try:
+        receipt = await asyncio.to_thread(payments.handle_transfer_event, event)
+    except payments.PaymentMismatch as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if receipt:
+        await hub.payment(receipt)
     return {"ok": True}
 
 @app.post("/demo/reset")
-async def reset(): db.clear_demo(); return {"ok": True}
+async def reset():
+    try:
+        db.clear_demo()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"ok": True}
 
 @app.websocket("/ws")
 async def websocket(ws: WebSocket):
