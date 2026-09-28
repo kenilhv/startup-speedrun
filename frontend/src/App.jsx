@@ -30,7 +30,10 @@ const COLUMNS = [
 const STRIPE_TRANSFER_URL = (id) => `https://dashboard.stripe.com/test/transfers/${id}`;
 
 const usd = (cents) =>
-  `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  cents == null ? "—" : `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+// SQLite CURRENT_TIMESTAMP is UTC without a zone ("2026-09-28 13:02:11")
+const toIso = (ts) => (ts && /^\d{4}-\d\d-\d\d \d/.test(ts) ? ts.replace(" ", "T") + "Z" : ts);
 
 const spring = { type: "spring", stiffness: 380, damping: 30 };
 
@@ -112,7 +115,7 @@ function ScanDoc() {
 /* ---------- card ---------- */
 
 function Card({ inv, callStart, onOpen, ref }) {
-  const name = inv.vendor?.name ?? inv.vendor_name_raw;
+  const name = inv.vendor?.name ?? inv.vendor_name_raw ?? inv.filename ?? "New invoice";
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
   const rx = useSpring(useTransform(my, [-0.5, 0.5], [10, -10]), { stiffness: 300, damping: 20 });
@@ -163,7 +166,7 @@ function Card({ inv, callStart, onOpen, ref }) {
           <RiskBadge level={inv.risk_level} />
         </div>
         <div className="card-mid">
-          <span className="num">{inv.invoice_number}</span>
+          <span className="num">{inv.invoice_number ?? "reading…"}</span>
           <span className="amount">{usd(inv.amount_cents)}</span>
         </div>
 
@@ -526,7 +529,7 @@ export default function App() {
       .then((list) => list.forEach(upsert))
       .catch((e) => setError(`Could not load invoices: ${e.message}`));
     c.loadEvents()
-      .then((ev) => setFeed(ev.map((a) => ({ ...a, ts: a.ts ?? a.created_at, key: `e${a.id}` })).reverse()))
+      .then((ev) => setFeed(ev.map((a) => ({ ...a, ts: toIso(a.ts ?? a.created_at), key: `e${a.id}` }))))
       .catch(() => {});
     return () => client.current?.close();
   }, [upsert]);

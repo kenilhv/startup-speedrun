@@ -1,4 +1,6 @@
+import asyncio
 from . import db, rules, payments
+from .stripe_gateway import StripeConfigurationError
 from .agents.analysis_agent import extract_invoice
 
 async def process(invoice_id, notify, queue):
@@ -19,6 +21,12 @@ async def process(invoice_id, notify, queue):
     if not vendor:
         await notify.status(invoice_id, "escalated", "Unknown vendor; needs a human"); return
     if level == "low":
-        payments.pay(updated); await notify.status(invoice_id, "settled", f"Stripe paid {vendor['name']} ${(updated['amount_cents'] or 0)/100:,.2f}")
+        try:
+            receipt = await asyncio.to_thread(payments.pay, invoice_id)
+        except (payments.PaymentError, StripeConfigurationError) as exc:
+            if db.get_invoice(invoice_id)["status"] == "analyzing":
+                await notify.status(invoice_id, "escalated", str(exc))
+            return
+        await notify.payment(receipt)
     else:
         await notify.status(invoice_id, "flagged", "; ".join(reasons)); await queue.enqueue(invoice_id)
