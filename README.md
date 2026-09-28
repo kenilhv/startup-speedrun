@@ -8,7 +8,7 @@ The selected payment approach is **Brainbase workflow + the user's connected Lin
 
 Brainbase's agent-level Payments (Beta) page was inspected: the Link wallet was connected and labeled **Live payments / Agent checkout**. This is distinct from Brainbase's usage-credit billing. No payment requests, agent runs, purchases, or wallet changes were performed during inspection.
 
-The backend-to-Brainbase payment connector is **not implemented**. `PAYMENT_PROVIDER=brainbase_link` is the default and disables outgoing legacy Stripe API calls, including provisioning. Payment attempts currently fail closed with an explicit integration-pending error. This setting does not invoke Brainbase or create a Link approval request.
+The backend-to-Brainbase payment connector is implemented in `backend/brainbase_payer.py` and ships **switched off** (`BRAINBASE_PAYMENTS_ENABLED=false`). With it off, payment attempts fail closed and nothing is dispatched. With it on, approved invoices go to the "PayCrew Payer" Brainbase agent, which checks out with the Link wallet; the backend marks an invoice paid only when the agent's final report matches the exact payment. See the handoff doc for the settings and the evidence caveat.
 
 The previous test-transfer adapter remains only as inactive legacy code. It is not the team's current payment implementation. See [Brainbase + Link integration handoff](docs/brainbase-link-integration.md) for the remaining contract and safety requirements.
 
@@ -18,7 +18,6 @@ Backend work in progress, not production-ready. REST routes, SQLite storage, Web
 
 Known integration gaps:
 
-- `backend/agents/analysis_agent.py` is a placeholder text parser, not a working PDF/Claude extractor. Shresth's extractor must replace it.
 - `backend/calling/caller.py` is a mock adapter. Kenil's real caller must replace it.
 - There is no implicit simulated-payment fallback. Missing/disabled provider configuration does not mark an invoice paid.
 - Brainbase workflow invocation and authenticated final payment-result reconciliation remain to be integrated. A Link approval alone must never mark an invoice paid.

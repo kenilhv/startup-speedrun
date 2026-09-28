@@ -23,6 +23,21 @@ def seed():
             phone = os.getenv(variable) or None if variable else phone
             c.execute("""INSERT INTO vendors(name,bank_last4_on_file,phone_on_file) VALUES (?,?,?)
                 ON CONFLICT(name) DO UPDATE SET phone_on_file=COALESCE(excluded.phone_on_file,vendors.phone_on_file)""", (name, bank, phone))
+        # Trusted checkout links for Brainbase + Link payments. Only ever from our own config,
+        # never from an invoice. JSON object keyed by vendor name.
+        for name, url in _payment_urls().items():
+            c.execute("UPDATE vendors SET payment_url=? WHERE name=?", (url, name))
+
+def _payment_urls():
+    raw = os.getenv("VENDOR_PAYMENT_URLS", "").strip()
+    if not raw:
+        return {}
+    try:
+        urls = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("VENDOR_PAYMENT_URLS must be a JSON object of vendor name -> https URL") from exc
+    known = {v[0] for v in VENDORS}
+    return {n: u for n, u in urls.items() if n in known and isinstance(u, str) and u.startswith("https://")}
 
 def _setup_request(name, params):
     """Persist exact input before sending it; a rerun recovers the same Stripe object."""

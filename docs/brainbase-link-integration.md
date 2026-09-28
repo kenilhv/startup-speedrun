@@ -38,3 +38,17 @@ The merchant must provide a compatible payment/checkout destination. Connecting 
 - Retain receipts and an audit trail without storing card credentials. Require owner authentication and secure callback handling before public deployment.
 
 No agent execution, payment approval request, card charge, purchase, or payment-settings change was performed to produce this handoff.
+
+
+## Implemented connector (September 28, 2026)
+
+`backend/brainbase_payer.py` now implements the route. It stays off unless `PAYMENT_PROVIDER=brainbase_link` **and** `BRAINBASE_PAYMENTS_ENABLED=true`, plus `BRAINBASE_TOKEN`, `BRAINBASE_PAYER_AGENT_ID` and `BRAINBASE_PAY_MAX_CENTS` are set. Missing settings fail closed with no payments row.
+
+- **Payer agent:** "PayCrew Payer" (`brainbase-agents/payer`, id `1b4ece5e-a9c4-46ea-8c27-e43f590bb818`). Its Link wallet must be connected on that agent's Payments page by the owner.
+- **Dispatch:** a payments row (`provider='brainbase'`, frozen request, idempotency key) is written *before* `POST /v2/tasks` with `Idempotency-Key`. The task message carries the payment reference, vendor, invoice, exact amount and the vendor's trusted checkout URL (`vendors.payment_url`, seeded only from `VENDOR_PAYMENT_URLS`). Over-cap, non-USD, missing link, bank mismatch on auto-pay and wrong state are refused before any request.
+- **Invoice status:** a new `paying` status (analyzing/awaiting_approval → paying → settled/escalated).
+- **Result:** `PaymentWatcher` polls `GET /v2/tasks/{id}`. On `success` it reads the latest `assistant.message` and settles only if exactly one JSON report matches the reference, `status == "paid"`, the exact amount, `usd`, the checkout host, and a non-empty order id. `fail`/`need_more_info` or a reported failure → `failed`, escalated. Anything unreadable, mismatched or past `BRAINBASE_PAY_TIMEOUT_SECONDS` → `unknown`, escalated, never retried automatically. A transport error on dispatch → `unknown`; an explicit re-approval resends the identical request with the same key.
+
+**Evidence caveat.** Settlement evidence is the payer agent's own final report, read back from a task this backend created with its own token. That is authenticated provenance, not a payment-rail receipt, and weaker than a signed Stripe event. The strict field binding is the substitute until Brainbase offers a result contract (question 3 above is still open).
+
+**Still required before the first live run (owner decisions):** connect the Link wallet to the payer agent; give each demo vendor a real checkout page (a bank-details-only invoice cannot be paid by checkout); set a spend cap; create the PAT; then flip the kill switch. The first clean upload after that spends real money. `/demo/reset` refuses while any payment is pending or unknown.

@@ -1,5 +1,5 @@
 import asyncio
-from . import db, rules, payments
+from . import brainbase_payer, db, rules, payments
 from .stripe_gateway import StripeConfigurationError
 from .agents.analysis_agent import extract_invoice
 
@@ -27,6 +27,9 @@ async def process(invoice_id, notify, queue):
             if db.get_invoice(invoice_id)["status"] == "analyzing":
                 await notify.status(invoice_id, "escalated", str(exc))
             return
-        await notify.payment(receipt)
+        if isinstance(receipt, brainbase_payer.Dispatch):
+            await notify.status(invoice_id, "paying", receipt.message)
+        else:
+            await notify.payment(receipt)
     else:
         await notify.status(invoice_id, "flagged", "; ".join(reasons)); await queue.enqueue(invoice_id)

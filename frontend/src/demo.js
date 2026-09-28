@@ -23,7 +23,7 @@ export async function runDemo({ sim, ui, wait }) {
   ui.chapter(0);
   await say("Fraudsters pose as your vendors.", "They send a real-looking invoice with new bank details.", 3200);
   await say("$3.046B lost to business email compromise in 2025.", "The fix is a callback nobody has time to make.", 3400);
-  await say("Meet PayCrew.", "An autonomous finance team: Claude reads, Stripe pays, Brainbase calls.", 3000);
+  await say("Meet PayCrew.", "An autonomous finance team: Claude reads, Brainbase agents call and pay.", 3000);
 
   // 2. Upload
   ui.chapter(1);
@@ -58,7 +58,7 @@ export async function runDemo({ sim, ui, wait }) {
 
   // 4. Pay
   ui.chapter(3);
-  ui.caption({ title: "Clean invoices get paid in seconds.", sub: "Stripe transfers straight to each vendor's connected account." });
+  ui.caption({ title: "Clean invoices get paid in seconds.", sub: "A Brainbase agent pays each vendor with the Link wallet." });
   for (const num of clean) {
     sim.pay(byNum[num].id);
     await wait(1100);

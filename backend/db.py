@@ -33,7 +33,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, invoice_id INTEGER UNIQUE NOT NULL, stripe_transfer_id TEXT, amount_cents INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, invoice_id INTEGER, type TEXT DEFAULT 'activity', message TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         """)
-        _ensure_columns(c, "vendors", {"email":"TEXT"})
+        _ensure_columns(c, "vendors", {"email":"TEXT", "payment_url":"TEXT"})
         _ensure_columns(c, "invoices", {"vendor_name_raw":"TEXT", "currency":"TEXT DEFAULT 'usd'", "due_date":"TEXT", "bank_last4_claimed":"TEXT", "source":"TEXT DEFAULT 'upload'"})
         _ensure_columns(c, "calls", {"status":"TEXT DEFAULT 'queued'", "transcript":"TEXT", "started_at":"TEXT", "ended_at":"TEXT"})
         _ensure_columns(c, "payments", {"stripe_transfer_id":"TEXT"})
@@ -41,6 +41,7 @@ def init_db():
             "idempotency_key": "TEXT", "request_json": "TEXT",
             "started_at": "REAL", "lease_until": "REAL DEFAULT 0",
             "error_code": "TEXT", "approved_by": "TEXT",
+            "provider": "TEXT DEFAULT 'stripe'", "provider_ref": "TEXT", "result_json": "TEXT",
         })
         _ensure_columns(c, "events", {"type":"TEXT DEFAULT 'activity'"})
         c.executescript("""
@@ -62,7 +63,8 @@ def _decode(data):
 INVOICE_SQL = """
 SELECT i.*, v.id vendor_id_join, v.name vendor_name, v.phone_on_file vendor_phone_on_file, v.bank_last4_on_file vendor_bank_last4_on_file,
  c.status call_status, c.outcome call_outcome, c.summary call_summary, c.attempt call_attempt,
- p.id payment_id, p.stripe_transfer_id payment_stripe_transfer_id, p.amount_cents payment_amount_cents, p.status payment_status
+ p.id payment_id, p.stripe_transfer_id payment_stripe_transfer_id, p.amount_cents payment_amount_cents, p.status payment_status,
+ p.provider payment_provider, p.provider_ref payment_provider_ref, p.result_json payment_result_json, p.error_code payment_error_code
 FROM invoices i LEFT JOIN vendors v ON v.id=i.vendor_id
 LEFT JOIN calls c ON c.id=(SELECT id FROM calls WHERE invoice_id=i.id ORDER BY id DESC LIMIT 1)
 LEFT JOIN payments p ON p.invoice_id=i.id
@@ -77,7 +79,11 @@ def invoice_object(row):
     call = {k:data.pop(f"call_{k}") for k in ("status","outcome","summary","attempt")}
     data["call"] = call if call["status"] else None
     payment_id = data.pop("payment_id")
-    payment = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status")}
+    payment = {"id":payment_id, "stripe_transfer_id":data.pop("payment_stripe_transfer_id"), "amount_cents":data.pop("payment_amount_cents"), "status":data.pop("payment_status"),
+               "provider":data.pop("payment_provider"), "task_id":data.pop("payment_provider_ref"), "error_code":data.pop("payment_error_code")}
+    result = data.pop("payment_result_json")
+    try: payment["order_id"] = (json.loads(result) or {}).get("order_id") if result else None
+    except ValueError: payment["order_id"] = None
     data["payment"] = payment if payment_id else None
     return data
 

@@ -13,7 +13,7 @@ const NODES = {
   inbox: { x: 20, y: 129, icon: "📥", name: "Intake", tone: "green" },
   claude: { x: 225, y: 129, icon: "🧠", name: "Claude Analyst", tone: "mint" },
   rules: { x: 430, y: 129, icon: "⚖️", name: "Risk Rules", tone: "green" },
-  stripe: { x: 1010, y: 30, icon: "💳", name: "Stripe Payer", tone: "green" },
+  payer: { x: 1010, y: 30, icon: "💳", name: "Brainbase Payer", tone: "green" },
   owner: { x: 845, y: 129, icon: "👤", name: "Owner · Slack", tone: "amber" },
   queue: { x: 640, y: 229, icon: "🚦", name: "Call Queue", tone: "amber" },
   caller: { x: 845, y: 229, icon: "📞", name: "Brainbase Caller", tone: "blue" },
@@ -24,12 +24,12 @@ const NODES = {
 const EDGES = [
   ["inbox", "r", "claude", "l"],
   ["claude", "r", "rules", "l"],
-  ["rules", "r", "stripe", "l"],
+  ["rules", "r", "payer", "l"],
   ["rules", "b", "queue", "l"],
   ["queue", "r", "caller", "l"],
   ["caller", "r", "blocked", "l"],
   ["caller", "t", "owner", "b"],
-  ["owner", "r", "stripe", "b"],
+  ["owner", "r", "payer", "b"],
   ["owner", "r", "blocked", "t"],
   ["caller", "b", "queue", "b", "retry"],
 ];
@@ -37,7 +37,9 @@ const EDGES = [
 // status change -> the edges an invoice travels
 const ROUTES = {
   "received>analyzing": [["inbox", "claude"]],
-  "analyzing>settled": [["claude", "rules"], ["rules", "stripe"]],
+  "analyzing>settled": [["claude", "rules"], ["rules", "payer"]],
+  "analyzing>paying": [["claude", "rules"], ["rules", "payer"]],
+  "awaiting_approval>paying": [["owner", "payer"]],
   "analyzing>flagged": [["claude", "rules"], ["rules", "queue"]],
   "analyzing>awaiting_approval": [["claude", "rules"]],
   "analyzing>escalated": [["claude", "rules"]],
@@ -46,9 +48,9 @@ const ROUTES = {
   "calling>awaiting_approval": [["caller", "owner"]],
   "calling>escalated": [["caller", "owner"]],
   "calling>flagged": [["caller", "queue"]],
-  "awaiting_approval>settled": [["owner", "stripe"]],
+  "awaiting_approval>settled": [["owner", "payer"]],
   "awaiting_approval>blocked": [["owner", "blocked"]],
-  "escalated>settled": [["owner", "stripe"]],
+  "escalated>settled": [["owner", "payer"]],
   "escalated>blocked": [["owner", "blocked"]],
 };
 
@@ -60,7 +62,8 @@ const AT = {
   calling: "caller",
   awaiting_approval: "owner",
   escalated: "owner",
-  settled: "stripe",
+  paying: "payer",
+  settled: "payer",
   blocked: "blocked",
 };
 
@@ -182,7 +185,7 @@ export default function Workflow({ invoices, flows }) {
     const at = AT[inv.status];
     if (!at) continue;
     counts[at] = (counts[at] ?? 0) + 1;
-    if (!sample[at]) sample[at] = inv;
+    if (!sample[at] || inv.status === "paying") sample[at] = inv;
   }
 
   const hotEdges = new Set();
@@ -193,6 +196,7 @@ export default function Workflow({ invoices, flows }) {
       hotEdges.add(edgeId(a, b));
       hotNodes.add(b);
     }
+    if (AT[f.to]) hotNodes.add(AT[f.to]);
   }
 
   const usd = (c) => `$${(c / 100).toLocaleString("en-US")}`;
@@ -206,7 +210,7 @@ export default function Workflow({ invoices, flows }) {
     inbox: counts.inbox ? `${counts.inbox} waiting` : "Listening",
     claude: sample.claude ? `Reading ${sample.claude.invoice_number}` : "Ready",
     rules: hotNodes.has("rules") ? "Scoring risk…" : "Ready",
-    stripe: paid ? `${usd(paid)} paid` : "Ready",
+    payer: sample.payer?.status === "paying" ? `Paying ${sample.payer.invoice_number} via Link` : paid ? `${usd(paid)} paid` : "Ready",
     owner: counts.owner ? `${counts.owner} need a decision` : "All clear",
     queue: counts.queue ? `${counts.queue} in line` : "Empty",
     caller: sample.caller ? `On call · ${sample.caller.vendor?.name ?? sample.caller.vendor_name_raw}` : "Ready",
@@ -217,6 +221,7 @@ export default function Workflow({ invoices, flows }) {
     rules: "checks vendor file",
     caller: "calls number on file",
     queue: "one call at a time",
+    payer: "pays via Link wallet",
   };
 
   return (
@@ -233,7 +238,7 @@ export default function Workflow({ invoices, flows }) {
             <b>{inFlight}</b> in flight
           </span>
           <span className="wf-chip green">
-            <b>{counts.stripe ?? 0}</b> paid
+            <b>{invoices.filter((i) => i.status === "settled").length}</b> paid
           </span>
           <span className="wf-chip amber">
             <b>{counts.owner ?? 0}</b> awaiting

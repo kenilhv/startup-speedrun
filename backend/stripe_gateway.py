@@ -17,7 +17,8 @@ def resource_dict(resource):
 def test_client():
     if os.getenv("PAYMENT_PROVIDER", "brainbase_link") != "stripe_test":
         raise StripeConfigurationError(
-            "Brainbase + Link is the selected payment approach. Its backend connector is not implemented; "
+            "Brainbase + Link is the selected payment approach and it is switched off "
+            "(set BRAINBASE_PAYMENTS_ENABLED=true plus the Brainbase settings in backend/.env); "
             "no payment was attempted. Legacy Stripe calls are disabled."
         )
     key = os.getenv("STRIPE_SECRET_KEY", "").strip()

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from . import db, pipeline, workflow, payments
+from . import brainbase_payer, db, pipeline, workflow, payments
 from .stripe_gateway import StripeConfigurationError
 from .models import CallResult
 from .call_queue import CallQueue
@@ -44,10 +44,10 @@ class Hub:
                 await notify_escalated(invoice, message)
         except Exception: log.exception("Slack notification failed for invoice %s", invoice_id)
 
-hub = Hub(); queue = CallQueue(hub)
+hub = Hub(); queue = CallQueue(hub); payment_watcher = brainbase_payer.PaymentWatcher(hub)
 
 @app.on_event("startup")
-async def startup(): db.init_db(); seed(); queue.start()
+async def startup(): db.init_db(); seed(); queue.start(); payment_watcher.start()
 
 @app.get("/health")
 def health(): return {"ok": True}
@@ -93,7 +93,10 @@ async def decide(invoice_id: int, approved: bool, actor="dashboard"):
             raise HTTPException(409, str(exc)) from exc
         except payments.PaymentError as exc:
             raise HTTPException(502, str(exc)) from exc
-        await hub.payment(receipt)
+        if isinstance(receipt, brainbase_payer.Dispatch):
+            await hub.status(invoice_id, "paying", f"Approved by {actor}. {receipt.message}")
+        else:
+            await hub.payment(receipt)
     else:
         try:
             await hub.status(invoice_id, "blocked", f"Rejected by {actor}")
@@ -131,7 +134,8 @@ async def slack_webhook(request: Request):
     if action["action_id"] not in {"approve_invoice", "reject_invoice"}: raise HTTPException(422, "Unknown Slack action")
     actor = payload.get("user", {}).get("name") or payload.get("user", {}).get("username") or "Slack user"
     invoice = await decide(invoice_id, approved, actor)
-    return {"response_type":"ephemeral", "text":f"Invoice {invoice_id} {'approved and paid' if approved else 'rejected'}."}
+    done = "rejected" if not approved else ("approved and paid" if invoice["status"] == "settled" else "approved; Brainbase is paying it")
+    return {"response_type":"ephemeral", "text":f"Invoice {invoice_id} {done}."}
 
 @app.post("/webhooks/stripe")
 async def stripe_webhook(request: Request):

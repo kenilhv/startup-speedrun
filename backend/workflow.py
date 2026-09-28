@@ -3,10 +3,12 @@ from . import db
 
 ALLOWED = {
     "received": {"analyzing"},
-    "analyzing": {"settled", "flagged", "escalated"},
+    "analyzing": {"settled", "flagged", "escalated", "paying"},
     "flagged": {"calling", "escalated"},
     "calling": {"awaiting_approval", "blocked", "flagged", "escalated"},
-    "awaiting_approval": {"settled", "blocked"},
+    "awaiting_approval": {"settled", "blocked", "paying"},
+    # Brainbase payer agent is working; settlement comes only from brainbase_payer's verified result.
+    "paying": {"escalated"},
     "settled": set(), "blocked": set(), "escalated": set(),
 }
 

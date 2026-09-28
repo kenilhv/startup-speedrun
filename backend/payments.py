@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import stripe
 
-from . import db
+from . import brainbase_payer, db
 from .stripe_gateway import resource_dict, test_client
 
 # Stripe may discard idempotency keys after 24 hours. Stop automatic retries early.
@@ -116,7 +116,19 @@ def _settle(c, payment, transfer):
     return Receipt(payment["invoice_id"], transfer_id, event)
 
 
-def pay(invoice_id: int, approved_by: str | None = None) -> Receipt:
+def pay(invoice_id: int, approved_by: str | None = None) -> "Receipt | brainbase_payer.Dispatch":
+    """Settle immediately (legacy Stripe test transfer) or hand off to the Brainbase payer agent.
+
+    With PAYMENT_PROVIDER=brainbase_link and BRAINBASE_PAYMENTS_ENABLED=true this returns a Dispatch:
+    the invoice is being paid, not paid. Settlement then arrives from brainbase_payer.PaymentWatcher.
+    """
+    if brainbase_payer.enabled():
+        try:
+            return brainbase_payer.request_payment(invoice_id, approved_by)
+        except brainbase_payer.PayerRejected as exc:
+            raise PaymentConflict(str(exc)) from exc
+        except brainbase_payer.PayerAmbiguous as exc:
+            raise PaymentError(str(exc)) from exc
     client = test_client()  # Refuse missing/live credentials before reserving anything.
     payment = _reserve(invoice_id, approved_by)
     if payment["status"] == "paid":

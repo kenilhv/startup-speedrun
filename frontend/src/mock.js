@@ -59,11 +59,13 @@ export function createMockClient({ onInvoice, onActivity, onConnection }) {
   }
 
   function pay(inv) {
-    const transfer = "tr_test_" + Math.random().toString(36).slice(2, 12);
-    update(
-      inv.id,
-      { status: "settled", payment: { stripe_transfer_id: transfer, amount_cents: inv.amount_cents, status: "paid" } },
-      `Stripe paid ${inv.vendor_name_raw} ${usd(inv.amount_cents)}`
+    const rnd = () => Math.random().toString(36).slice(2, 10);
+    const payment = { provider: "brainbase", task_id: `task_${rnd()}`, amount_cents: inv.amount_cents };
+    update(inv.id, { status: "paying", payment: { ...payment, status: "pending" } },
+      `Brainbase payer agent is paying ${usd(inv.amount_cents)} (waiting for Link approval)`);
+    later(1400, () =>
+      update(inv.id, { status: "settled", payment: { ...payment, status: "paid", order_id: `ord_${rnd()}` } },
+        `Brainbase paid ${inv.vendor_name_raw} ${usd(inv.amount_cents)} via Link`)
     );
   }
 

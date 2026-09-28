@@ -60,7 +60,9 @@ class OfflineTestCase(unittest.TestCase):
             "SLACK_BOT_TOKEN": "", "SLACK_CHANNEL_ID": "", "SLACK_SIGNING_SECRET": "",
             "CLEAN_VENDOR_PHONE": "", "FAST_CONSULT_PHONE": "",
             "PAYCREW_WEBHOOK_SECRET": "offline-test-secret",
-            "PAYMENT_PROVIDER": "brainbase_link",
+            "PAYMENT_PROVIDER": "brainbase_link", "BRAINBASE_PAYMENTS_ENABLED": "",
+            "BRAINBASE_TOKEN": "", "BRAINBASE_PAYER_AGENT_ID": "", "BRAINBASE_PAY_MAX_CENTS": "",
+            "VENDOR_PAYMENT_URLS": "", "MOCK_CALL_DELAY_SECONDS": "0", "MOCK_CALL_OUTCOMES": "",
         })
         environment.start()
         self.addCleanup(environment.stop)

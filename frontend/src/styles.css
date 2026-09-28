@@ -244,7 +244,7 @@ main { padding: 18px 22px; min-width: 0; }
 .drop-icon { font-size: 30px; display: inline-block; }
 
 /* ---------- board ---------- */
-.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; padding-bottom: 8px; perspective: 1200px; }
+.board { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px; padding-bottom: 8px; perspective: 1200px; }
 .col {
   background: rgba(255,255,255,.7); border: 1px solid var(--line); border-radius: 14px; min-height: 52vh;
   display: flex; flex-direction: column; transition: border-color .4s, box-shadow .4s, background .4s;
@@ -490,7 +490,7 @@ blockquote { margin: 10px 0 0; padding: 12px 14px; border-left: 3px solid var(--
   .feed { border-width: 1px 0 0 0; position: static; max-height: 300px; }
 }
 @media (max-width: 1100px) {
-  .board { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .col { min-height: 200px; }
 }
 @media (max-width: 760px) {
@@ -506,3 +506,19 @@ blockquote { margin: 10px 0 0; padding: 12px 14px; border-left: 3px solid var(--
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; }
 }
+
+/* paying (Brainbase payer agent) */
+.col-paying .col-head { color: var(--green); }
+.col-paying.has { border-color: #86efac; background: rgba(240,253,244,.7); }
+.status-paying .card { border-color: var(--green-2); box-shadow: 0 0 0 3px rgba(34,197,94,.14), var(--shadow); }
+.status-paying .card::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--green-2), transparent); background-size: 50% 100%; background-repeat: no-repeat;
+  animation: payslide 1.1s linear infinite;
+}
+@keyframes payslide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+.note.paying { color: var(--green-deep); font-weight: 600; }
+.coin { display: inline-block; animation: ring 1.2s ease-in-out infinite; }
+.pay-paid { color: var(--green); font-weight: 700; }
+.pay-pending { color: var(--gold); font-weight: 700; }
+.pay-failed, .pay-unknown { color: var(--red); font-weight: 700; }

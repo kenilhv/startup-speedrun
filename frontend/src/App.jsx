@@ -18,6 +18,7 @@ import { bigWin, fraudBurst, paidBurst } from "./fx.js";
 const COLUMNS = [
   ["received", "Received", "📥"],
   ["analyzing", "Analyzing", "🧠"],
+  ["paying", "Paying", "💸"],
   ["settled", "Settled", "✅"],
   ["flagged", "Flagged", "🚩"],
   ["calling", "Calling", "📞"],
@@ -26,8 +27,6 @@ const COLUMNS = [
   ["escalated", "Escalated", "⚠️"],
 ];
 
-// Confirm the exact path with Zubair once real transfers exist.
-const STRIPE_TRANSFER_URL = (id) => `https://dashboard.stripe.com/test/transfers/${id}`;
 
 const usd = (cents) =>
   cents == null ? "—" : `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -196,7 +195,7 @@ function Card({ inv, callStart, onOpen, ref }) {
             >
               ✓
             </motion.span>
-            Paid via Stripe
+            Paid via Brainbase · Link
           </div>
         )}
         {inv.status === "blocked" && (
@@ -213,6 +212,11 @@ function Card({ inv, callStart, onOpen, ref }) {
           </>
         )}
         {inv.status === "awaiting_approval" && <div className="note gold">Vendor confirmed · tap to approve</div>}
+        {inv.status === "paying" && (
+          <div className="note paying">
+            <span className="coin" aria-hidden>💸</span> Brainbase paying · awaiting Link
+          </div>
+        )}
         {inv.status === "escalated" && <div className="note warn">Needs a human</div>}
       </motion.div>
     </motion.button>
@@ -325,9 +329,14 @@ function Drawer({ inv, onClose, onApprove, onReject }) {
           {inv.payment && (
             <motion.section variants={item}>
               <h3>Payment</h3>
-              <a href={STRIPE_TRANSFER_URL(inv.payment.stripe_transfer_id)} target="_blank" rel="noreferrer" className="link">
-                {inv.payment.stripe_transfer_id} ↗
-              </a>
+              <dl className="fields">
+                <dt>Status</dt><dd className={`pay-${inv.payment.status}`}>{inv.payment.status}</dd>
+                <dt>Paid by</dt><dd>{inv.payment.provider === "brainbase" ? "Brainbase payer agent (Link wallet)" : inv.payment.provider ?? "—"}</dd>
+                {inv.payment.task_id && (<><dt>Brainbase task</dt><dd className="link">{inv.payment.task_id}</dd></>)}
+                {inv.payment.order_id && (<><dt>Order / receipt</dt><dd className="link">{inv.payment.order_id}</dd></>)}
+                {inv.payment.stripe_transfer_id && (<><dt>Transfer</dt><dd className="link">{inv.payment.stripe_transfer_id}</dd></>)}
+                {inv.payment.error_code && (<><dt>Note</dt><dd>{inv.payment.error_code}</dd></>)}
+              </dl>
             </motion.section>
           )}
 
@@ -372,7 +381,7 @@ function DropZone({ onFiles }) {
       </motion.span>
       <div>
         <strong>{over ? "Let go. The crew takes it from here." : "Drop invoice PDFs here"}</strong>
-        <div className="muted small">Several at once is fine. Claude reads, rules score, Stripe pays, Brainbase calls.</div>
+        <div className="muted small">Several at once is fine. Claude reads, rules score, Brainbase calls and pays.</div>
       </div>
     </motion.div>
   );
@@ -431,7 +440,7 @@ function Toasts({ toasts }) {
 }
 
 const FEED_ICON = [
-  [/stripe paid|approved/i, "💸"],
+  [/paid|paying|approved/i, "💸"],
   [/calling/i, "📞"],
   [/denied|blocked|rejected/i, "🛡️"],
   [/confirmed/i, "✅"],
@@ -489,6 +498,8 @@ export default function App() {
           sub: `${usd(inv.amount_cents)} to ••••${inv.bank_last4_claimed ?? "????"} stopped · ${inv.vendor_name_raw}`,
         });
         setTimeout(() => setSplash(null), 2600);
+      } else if (inv.status === "paying") {
+        toast(`💸 Brainbase agent is paying ${inv.vendor_name_raw} ${usd(inv.amount_cents)}`, "ok");
       } else if (inv.status === "calling") {
         toast(`📞 Calling ${inv.vendor_name_raw} on the number on file`, "call");
       } else if (inv.status === "flagged" && prev !== "calling") {
